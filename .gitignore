@@ -1,0 +1,20 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserdata
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Build artifacts
+*.dmg
+*.app
+*.dSYM
+
+# SPM
+.build/
+Packages/
