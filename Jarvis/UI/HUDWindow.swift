@@ -91,6 +91,7 @@ class HUDWindowController {
         panel.backgroundColor = .clear
         panel.hasShadow = false // SwiftUI handles shadows
         panel.isMovableByWindowBackground = true
+        panel.hidesOnDeactivate = false  // Critical: menu bar app is never "active"
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         if let screen = NSScreen.main {
@@ -103,7 +104,7 @@ class HUDWindowController {
             )
         }
 
-        panel.orderFront(nil)
+        panel.orderFrontRegardless()
         self.panel = panel
         hudState.isVisible = true
     }
