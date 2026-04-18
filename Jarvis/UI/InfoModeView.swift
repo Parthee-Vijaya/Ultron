@@ -16,6 +16,7 @@ struct InfoModeView: View {
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
             VStack(spacing: 12) {
                 tilesRow
+                commuteTile
                 claudeStatsTile
                 systemTile
                 networkActions
@@ -23,7 +24,7 @@ struct InfoModeView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
-        .frame(width: 560, alignment: .topLeading)
+        .frame(width: 680, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .task { await service.refresh() }
     }
@@ -189,42 +190,125 @@ struct InfoModeView: View {
         }
     }
 
+    @State private var customDestination: String = ""
+
     private var commuteTile: some View {
-        tile(title: "Hjem", icon: "house.fill") {
-            if let commute = service.commute {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(commute.prettyTravelTime)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("til \(commute.toLabel)")
-                            .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
-                    }
-                    Text(commute.prettyDistance)
-                        .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
-                    if commute.baselineTravelTime != nil {
-                        HStack(spacing: 4) {
-                            Image(systemName: trafficIcon(commute.trafficCondition))
-                                .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
-                            Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
-                                .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
-                        }
-                    }
+        tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
+            HStack(alignment: .top, spacing: 14) {
+                commuteStatsColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let commute = service.commute, !commute.routeCoordinates.isEmpty {
+                    CommuteMapView(
+                        origin: commute.origin,
+                        destination: commute.destination,
+                        coordinates: commute.routeCoordinates
+                    )
+                    .frame(width: 260, height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(JarvisTheme.neonCyan.opacity(0.35), lineWidth: 1)
+                    )
+                }
+            }
+
+            destinationInputRow
+                .padding(.top, 10)
+        }
+    }
+
+    private var commuteTitle: String {
+        service.customDestinationAddress == nil ? "Hjem" : "Rute"
+    }
+
+    @ViewBuilder
+    private var commuteStatsColumn: some View {
+        if let commute = service.commute {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(commute.prettyTravelTime)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("til \(commute.toLabel)")
+                        .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                }
+                Text(commute.prettyDistance)
+                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                if commute.baselineTravelTime != nil {
                     HStack(spacing: 4) {
-                        Image(systemName: "bolt.car.fill")
-                            .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
-                        Text(String(format: "Tesla ~%.1f kWh", commute.teslaKWh))
-                            .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                        Image(systemName: trafficIcon(commute.trafficCondition))
+                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                        Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
+                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
                     }
                 }
-            } else if let error = service.commuteError {
-                Text(error)
-                    .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
-                    .multilineTextAlignment(.leading)
-            } else {
-                placeholder("Beregner rute…")
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.car.fill")
+                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                    Text(String(format: "Tesla ~%.2f kWh", commute.teslaKWh))
+                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                }
+                Text("Fra \(commute.fromLabel)")
+                    .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    .padding(.top, 2)
+            }
+        } else if let error = service.commuteError {
+            Text(error)
+                .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                .multilineTextAlignment(.leading)
+        } else {
+            placeholder("Beregner rute…")
+        }
+    }
+
+    private var destinationInputRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                TextField("Indtast adresse…", text: $customDestination)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .onSubmit(runCustomDestination)
+
+                Button(action: runCustomDestination) {
+                    if service.isRunningCustomCommute {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Text("Beregn").font(.caption.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(JarvisTheme.neonCyan)
+                .controlSize(.small)
+                .disabled(customDestination.trimmingCharacters(in: .whitespaces).isEmpty
+                          || service.isRunningCustomCommute)
+
+                if service.customDestinationAddress != nil {
+                    Button {
+                        customDestination = ""
+                        Task { await service.resetCustomCommute() }
+                    } label: {
+                        Label("Nulstil", systemImage: "arrow.uturn.backward")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            if let active = service.customDestinationAddress {
+                Text("Beregnet til: \(active)")
+                    .font(.caption2)
+                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
             }
         }
+    }
+
+    private func runCustomDestination() {
+        let trimmed = customDestination.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        Task { await service.recomputeCommute(to: trimmed) }
     }
 
     private func trafficIcon(_ condition: CommuteEstimate.TrafficCondition) -> String {
@@ -429,11 +513,6 @@ struct InfoModeView: View {
                     infoRow("Hardware", value: hardwareLine)
                 }
             }
-            // Commute tucked into System so the layout balances on narrower screens
-            HStack(spacing: 12) {
-                commuteTile
-            }
-            .padding(.top, 8)
         }
     }
 

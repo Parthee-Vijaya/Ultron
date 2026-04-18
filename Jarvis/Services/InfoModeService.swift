@@ -28,6 +28,11 @@ final class InfoModeService {
     // Async-action state for the manual buttons
     private(set) var isRunningSpeedtest = false
     private(set) var isRunningNetworkScan = false
+    private(set) var isRunningCustomCommute = false
+    /// Non-nil when the user has typed an ad-hoc destination into the Hjem tile.
+    /// Displayed instead of the default home commute; cleared on "Nulstil" or
+    /// next manual refresh.
+    private(set) var customDestinationAddress: String?
 
     private let locationService: LocationService
     private let weatherService = WeatherService()
@@ -115,6 +120,11 @@ final class InfoModeService {
     }
 
     private func loadCommuteTile() async {
+        // If the user has an ad-hoc custom destination active, don't clobber
+        // it on the periodic refresh — they'll hit "Nulstil" when they want
+        // the default home commute back.
+        if customDestinationAddress != nil { return }
+
         let result = await loadCommute()
         switch result {
         case .success(let est): self.commute = est; self.commuteError = nil
@@ -139,16 +149,82 @@ final class InfoModeService {
         systemInfo.networkScan = await systemInfoService.runNetworkScan()
     }
 
+    /// Recompute the commute row for an ad-hoc address typed into the Hjem
+    /// tile. Stays in place until the user hits "Nulstil" or the next forced
+    /// refresh — then we revert to the default home commute.
+    func recomputeCommute(to address: String) async {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !isRunningCustomCommute else { return }
+        isRunningCustomCommute = true
+        defer { isRunningCustomCommute = false }
+
+        self.customDestinationAddress = trimmed
+
+        let resolvedOrigin: (CLLocationCoordinate2D, String)?
+        if let live = await locationService.refreshWithCity() {
+            resolvedOrigin = live
+        } else {
+            resolvedOrigin = await originFallback()
+        }
+        guard let (coord, label) = resolvedOrigin else {
+            self.commute = nil
+            self.commuteError = "Kunne ikke bestemme startpunkt."
+            return
+        }
+
+        do {
+            let estimate = try await commuteService.estimate(
+                from: coord,
+                originLabel: label,
+                toAddress: trimmed
+            )
+            self.commute = estimate
+            self.commuteError = nil
+        } catch let error as CommuteError {
+            self.commute = nil
+            self.commuteError = error.localizedDescription ?? "Ukendt ruteberegningsfejl"
+        } catch {
+            self.commute = nil
+            self.commuteError = error.localizedDescription
+        }
+    }
+
+    /// Reset to the default home commute. Re-fires the normal loader.
+    func resetCustomCommute() async {
+        customDestinationAddress = nil
+        await loadCommuteTile()
+    }
+
+    /// Geocode fallback for when CoreLocation has no fix. Uses the home address
+    /// itself so a custom-destination query still produces a result.
+    private func originFallback() async -> (CLLocationCoordinate2D, String)? {
+        guard let home = locationService.homeAddress, !home.isEmpty,
+              let (coord, label) = await locationService.geocodeManual(home) else {
+            return nil
+        }
+        return (coord, label)
+    }
+
     // MARK: - Internals
 
     private func loadWeather() async -> WeatherSnapshot? {
+        // 1. Manual city override from Settings — always wins.
         if let manual = locationService.manualCity, !manual.isEmpty {
             if let (coord, label) = await locationService.geocodeManual(manual) {
                 return try? await weatherService.fetch(for: coord, locationLabel: label)
             }
         }
-        // Await reverse geocode so the tile shows "Næstved" instead of "Din lokation".
+        // 2. Live device location (+ reverse-geocoded city name). Requires
+        //    user to have granted Location access at least once.
         if let (coord, label) = await locationService.refreshWithCity() {
+            return try? await weatherService.fetch(for: coord, locationLabel: label)
+        }
+        // 3. Fallback: geocode the home address so the Vejr + Sol tiles still
+        //    populate when Location access is absent or in-flight. Without this
+        //    the tiles sit on "Henter vejr…" forever on first launch.
+        if let home = locationService.homeAddress, !home.isEmpty,
+           let (coord, label) = await locationService.geocodeManual(home) {
             return try? await weatherService.fetch(for: coord, locationLabel: label)
         }
         return nil

@@ -61,6 +61,12 @@ final class LocationService: NSObject {
         manager.requestWhenInUseAuthorization()
     }
 
+    /// True when the user has granted location access. On macOS the granted
+    /// state is `.authorizedAlways` — `.authorizedWhenInUse` is iOS-only.
+    static func isAuthorizedStatus(_ status: CLAuthorizationStatus) -> Bool {
+        status == .authorizedAlways
+    }
+
     /// Refresh the current location. Waits up to 5 s for a fix. Returns nil if the user
     /// denied access or no fix is available — in either case the caller should use
     /// `manualCity` instead (or prompt the user to set one).
@@ -73,8 +79,7 @@ final class LocationService: NSObject {
         // request race in the background, so Info-mode paints without waiting
         // 5 s on CLLocationManager's safety net every time. The delegate updates
         // `coordinate`/`lastRefresh` when the fresh fix arrives.
-        if let cached = coordinate,
-           authorization == .authorized || authorization == .authorizedAlways {
+        if let cached = coordinate, Self.isAuthorizedStatus(authorization) {
             manager.requestLocation()
             return cached
         }

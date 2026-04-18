@@ -2,6 +2,28 @@ import CoreLocation
 import Foundation
 import MapKit
 
+/// Simple value type wrapping a lat/lon pair. CLLocationCoordinate2D isn't
+/// Equatable, so we use this at CommuteEstimate's boundary and convert at UI
+/// boundaries.
+struct CoordinateLatLon: Equatable, Hashable, Sendable {
+    let latitude: Double
+    let longitude: Double
+
+    var clLocationCoordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+
+    init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    init(_ coord: CLLocationCoordinate2D) {
+        self.latitude = coord.latitude
+        self.longitude = coord.longitude
+    }
+}
+
 /// Reverse-distance commute estimate + Tesla Model 3 AWD 2025 energy usage.
 struct CommuteEstimate: Equatable {
     enum TrafficCondition: String {
@@ -34,8 +56,39 @@ struct CommuteEstimate: Equatable {
     let toLabel: String
     /// Tesla Model 3 AWD 2025 energy needed in kWh.
     let teslaKWh: Double
+    /// Origin + destination coordinates for the mini map.
+    let origin: CoordinateLatLon
+    let destination: CoordinateLatLon
+    /// Points along the driving route — used to draw a polyline overlay on the
+    /// mini map. Sampled from `MKRoute.polyline` so the whole thing stays
+    /// Equatable/Sendable without needing the live `MKRoute` object.
+    let routeCoordinates: [CoordinateLatLon]
 
     var distanceKm: Double { distanceMeters / 1000 }
+
+    /// Designated initialiser. The three new fields (origin/destination/route)
+    /// have defaults so test fixtures stay terse.
+    init(
+        expectedTravelTime: TimeInterval,
+        baselineTravelTime: TimeInterval?,
+        distanceMeters: Double,
+        fromLabel: String,
+        toLabel: String,
+        teslaKWh: Double,
+        origin: CoordinateLatLon = CoordinateLatLon(latitude: 0, longitude: 0),
+        destination: CoordinateLatLon = CoordinateLatLon(latitude: 0, longitude: 0),
+        routeCoordinates: [CoordinateLatLon] = []
+    ) {
+        self.expectedTravelTime = expectedTravelTime
+        self.baselineTravelTime = baselineTravelTime
+        self.distanceMeters = distanceMeters
+        self.fromLabel = fromLabel
+        self.toLabel = toLabel
+        self.teslaKWh = teslaKWh
+        self.origin = origin
+        self.destination = destination
+        self.routeCoordinates = routeCoordinates
+    }
 
     /// Extra time over free-flow baseline. 0 when baseline is absent or route
     /// is actually faster than the off-peak baseline (negative deltas pinned).
@@ -150,6 +203,7 @@ final class CommuteService {
 
         let distanceKm = route.distance / 1000
         let teslaKWh = distanceKm * Self.teslaModel3AWD2025Efficiency
+        let polylineCoords = Self.sampleCoordinates(from: route.polyline)
 
         return CommuteEstimate(
             expectedTravelTime: route.expectedTravelTime,
@@ -157,8 +211,36 @@ final class CommuteService {
             distanceMeters: route.distance,
             fromLabel: originLabel,
             toLabel: toLabel,
-            teslaKWh: teslaKWh
+            teslaKWh: teslaKWh,
+            origin: CoordinateLatLon(origin),
+            destination: CoordinateLatLon(destination),
+            routeCoordinates: polylineCoords
         )
+    }
+
+    /// Walk an MKPolyline's raw point buffer and downsample to at most ~200
+    /// coordinates. A 40-km commute yields ~1000 points otherwise, which is
+    /// wasteful for a 260×160 mini map.
+    private static func sampleCoordinates(from polyline: MKPolyline) -> [CoordinateLatLon] {
+        let pointCount = polyline.pointCount
+        guard pointCount > 0 else { return [] }
+        let maxPoints = 200
+        let stride = max(1, pointCount / maxPoints)
+        var result: [CoordinateLatLon] = []
+        result.reserveCapacity(min(pointCount, maxPoints) + 1)
+        let points = polyline.points()
+        var i = 0
+        while i < pointCount {
+            let coord = points[i].coordinate
+            result.append(CoordinateLatLon(coord))
+            i += stride
+        }
+        // Always include the last point so the polyline reaches the destination.
+        let last = points[pointCount - 1].coordinate
+        if result.last?.latitude != last.latitude || result.last?.longitude != last.longitude {
+            result.append(CoordinateLatLon(last))
+        }
+        return result
     }
 
     /// Next Sunday at ~03:00 local time — used as a "no traffic" probe for
