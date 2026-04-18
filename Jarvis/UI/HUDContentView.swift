@@ -49,7 +49,10 @@ struct HUDContentView: View {
         .scaleEffect(appeared ? 1 : Constants.Animation.appearScaleFrom)
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : Constants.Animation.appearOffsetFrom)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: state.currentPhase)
+        // NB: intentionally NO implicit animation on state.currentPhase here.
+        // An implicit animation there caused SwiftUI to fade the old subview out
+        // and the new one in, leaving a zero-opacity gap so users sometimes
+        // never saw the result — the bug reported in α.7.
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
                 appeared = true

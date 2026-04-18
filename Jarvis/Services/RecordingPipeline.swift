@@ -201,6 +201,7 @@ class RecordingPipeline {
     // MARK: - Result Delivery
 
     private func deliverResult(_ text: String, mode: Mode) {
+        LoggingService.shared.log("deliverResult: outputType=\(mode.outputType.rawValue), textChars=\(text.count)")
         switch mode.outputType {
         case .paste:
             let success = textInsertion.insertText(text)
@@ -211,6 +212,7 @@ class RecordingPipeline {
                 hudController.showResult(text)
             }
         case .hud:
+            LoggingService.shared.log("→ HUD showResult (\(text.prefix(80))...)")
             hudController.showResult(text)
             ttsService.speak(text)
         case .chat:

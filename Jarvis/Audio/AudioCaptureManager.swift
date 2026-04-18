@@ -1,24 +1,28 @@
 import AVFoundation
 
-/// Records microphone audio to WAV. v5.0.0-alpha.4 onward this no longer owns
-/// its own AVAudioEngine — it subscribes to `SharedAudioEngine` so the live
-/// speech-recognition service and the WAV writer consume one microphone in one
-/// tap, which cuts start-up latency and eliminates mic-contention glitches.
+/// Records microphone audio to WAV via `SharedAudioEngine`. In α.7 the audio
+/// append path bounced through `Task { @MainActor }` which meant buffers
+/// arriving right at stopRecording could be dropped (see the 44-byte "empty"
+/// recordings in the log). v5.0.0-alpha.8 serialises audioData writes through
+/// a private DispatchQueue so the audio thread can append directly without
+/// waiting for main-actor scheduling.
 @MainActor
 class AudioCaptureManager {
-    private var audioData = Data()
+    /// Serial queue that guards every read/write of `audioData`. Runs off the
+    /// main actor so the audio-render thread can append without bouncing.
+    nonisolated(unsafe) private var audioData = Data()
+    private let audioQueue = DispatchQueue(label: "pavi.Jarvis.AudioCapture.write",
+                                           qos: .userInitiated)
+
     private var isRecording = false
     private var subscriberToken: UUID?
     private var bufferWarningLogged = false
-    private static let bufferWarnThresholdBytes = 10 * 1_024 * 1_024  // 10 MB
+    private static let bufferWarnThresholdBytes = 10 * 1_024 * 1_024
 
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((Data) -> Void)?
 
-    /// Live audio-level sink, wired to the HUD's pulse indicator.
     weak var levelMonitor: AudioLevelMonitor?
-
-    /// Rolling oscilloscope buffer, wired to the waveform strip in the HUD.
     weak var waveformBuffer: WaveformBuffer?
 
     func startRecording() throws {
@@ -30,17 +34,22 @@ class AudioCaptureManager {
             throw JarvisError.audioFormatInvalid
         }
 
-        audioData = Data()
-        bufferWarningLogged = false
-        audioData.append(createWAVHeader(
+        // Reset buffer + write WAV header synchronously. Using audioQueue.sync
+        // here so any pending audio-thread appends from a prior session have
+        // drained before we start writing new ones.
+        let header = createWAVHeader(
             dataSize: 0,
             sampleRate: format.sampleRate,
             channels: UInt16(format.channelCount)
-        ))
+        )
+        audioQueue.sync {
+            self.audioData = Data()
+            self.audioData.append(header)
+        }
+        bufferWarningLogged = false
 
-        // Subscribe — the closure runs on the audio render thread. Keep work light.
         subscriberToken = engine.addSubscriber { [weak self] buffer in
-            self?.consume(buffer)
+            self?.handleBuffer(buffer)
         }
 
         isRecording = true
@@ -59,20 +68,24 @@ class AudioCaptureManager {
         levelMonitor?.reset()
         waveformBuffer?.reset()
 
-        let dataSize = UInt32(audioData.count - 44)
-        updateWAVHeader(data: &audioData, dataSize: dataSize)
-
-        let result = audioData
-        audioData = Data()
+        // Flush + finalise on the same queue that owns audioData. sync ensures
+        // any in-flight appends from the audio thread land first.
+        let result: Data = audioQueue.sync {
+            let dataSize = UInt32(max(0, self.audioData.count - 44))
+            self.updateWAVHeader(data: &self.audioData, dataSize: dataSize)
+            let snapshot = self.audioData
+            self.audioData = Data()
+            return snapshot
+        }
 
         LoggingService.shared.log("Audio recording stopped (\(result.count) bytes)")
         onRecordingStopped?(result)
         return result
     }
 
-    // MARK: - Buffer consumer (audio thread)
+    // MARK: - Audio-thread consumer
 
-    nonisolated private func consume(_ buffer: AVAudioPCMBuffer) {
+    nonisolated private func handleBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData?[0] else { return }
         let frameCount = Int(buffer.frameLength)
 
@@ -80,8 +93,7 @@ class AudioCaptureManager {
         var peak: Float = 0
         var pcm = Data(capacity: frameCount * 2)
         for i in 0..<frameCount {
-            let raw = channelData[i]
-            let sample = max(-1.0, min(1.0, raw))
+            let sample = max(-1.0, min(1.0, channelData[i]))
             sumOfSquares += sample * sample
             if abs(sample) > abs(peak) { peak = sample }
             var intSample = Int16(sample * Float(Int16.max))
@@ -92,17 +104,21 @@ class AudioCaptureManager {
         let boostedRMS = min(1.0, Double(rms) * 3.0)
         let oscPeak = max(-1.0, min(1.0, peak * 2.5))
 
-        // Bounce the WAV append + metering to main actor for state-isolation safety.
-        Task { @MainActor [weak self] in
-            guard let self, self.isRecording else { return }
+        // Append PCM directly on the audio queue — no main-actor bounce.
+        // subscriber removal on stopRecording guarantees no callback races the
+        // flush, so it's safe to skip the `isRecording` gate here.
+        audioQueue.async { [pcm] in
             self.audioData.append(pcm)
-            self.levelMonitor?.submit(rms: boostedRMS)
-            self.waveformBuffer?.push(peak: oscPeak)
-
             if !self.bufferWarningLogged && self.audioData.count > Self.bufferWarnThresholdBytes {
                 self.bufferWarningLogged = true
                 LoggingService.shared.log("Audio buffer exceeded \(Self.bufferWarnThresholdBytes / 1_048_576) MB — approaching max duration", level: .warning)
             }
+        }
+
+        // Level + waveform UI bounce stays — they're main-actor-only observables.
+        Task { @MainActor [weak self] in
+            self?.levelMonitor?.submit(rms: boostedRMS)
+            self?.waveformBuffer?.push(peak: oscPeak)
         }
     }
 
@@ -143,6 +159,7 @@ class AudioCaptureManager {
     }
 
     private func updateWAVHeader(data: inout Data, dataSize: UInt32) {
+        guard data.count >= 44 else { return }
         var chunkSize = UInt32(36 + dataSize)
         data.replaceSubrange(4..<8, with: Data(bytes: &chunkSize, count: 4))
         var ds = dataSize
