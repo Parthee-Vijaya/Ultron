@@ -3,13 +3,14 @@ import Foundation
 /// One news headline. Source lets the UI render the right badge.
 struct NewsHeadline: Identifiable, Equatable, Codable {
     enum Source: String, Codable, Identifiable, CaseIterable {
-        case dr, tv2, bbc
+        case dr, tv2, bbc, cnn
         var id: String { rawValue }
         var displayName: String {
             switch self {
             case .dr: return "DR"
             case .tv2: return "TV2"
             case .bbc: return "BBC"
+            case .cnn: return "CNN"
             }
         }
         var feedURL: URL {
@@ -17,6 +18,7 @@ struct NewsHeadline: Identifiable, Equatable, Codable {
             case .dr:  return URL(string: "https://www.dr.dk/nyheder/service/feeds/allenyheder")!
             case .tv2: return URL(string: "https://nyheder.tv2.dk/rss")!
             case .bbc: return URL(string: "https://feeds.bbci.co.uk/news/world/rss.xml")!
+            case .cnn: return URL(string: "https://rss.cnn.com/rss/edition.rss")!
             }
         }
     }

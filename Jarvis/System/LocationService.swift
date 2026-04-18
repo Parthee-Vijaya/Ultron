@@ -27,9 +27,10 @@ final class LocationService: NSObject {
     }
 
     /// User's home address — used by Info mode's commute estimate. Free-form string,
-    /// gets geocoded on each Info refresh.
+    /// gets geocoded on each Info refresh. Seeded to the owner's address on first run;
+    /// free-form override via Settings.
     var homeAddress: String? {
-        get { UserDefaults.standard.string(forKey: Self.homeAddressKey) }
+        get { UserDefaults.standard.string(forKey: Self.homeAddressKey) ?? Self.defaultHomeAddress }
         set {
             if let newValue, !newValue.isEmpty {
                 UserDefaults.standard.set(newValue, forKey: Self.homeAddressKey)
@@ -41,6 +42,7 @@ final class LocationService: NSObject {
 
     private static let manualCityKey = "jarvisManualCity"
     private static let homeAddressKey = "jarvisHomeAddress"
+    private static let defaultHomeAddress = "Jernbanegade 4E, 4700 Næstved"
 
     private let manager = CLLocationManager()
     private var lastRefresh: Date?
@@ -90,6 +92,31 @@ final class LocationService: NSObject {
                 }
             }
         }
+    }
+
+    /// Like `refresh()` but also awaits reverse-geocoding so the returned label is
+    /// the actual city name (not "Din lokation"). Falls back to the previous name
+    /// if geocoding fails.
+    func refreshWithCity() async -> (CLLocationCoordinate2D, String)? {
+        guard let coord = await refresh() else { return nil }
+        if let city = cityName, !city.isEmpty {
+            return (coord, city)
+        }
+        let resolved = await reverseGeocodeAwait(coord)
+        return (coord, resolved ?? "Din lokation")
+    }
+
+    private func reverseGeocodeAwait(_ coordinate: CLLocationCoordinate2D) async -> String? {
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let placemarks = try? await CLGeocoder().reverseGeocodeLocation(location)
+        let name = placemarks?.first?.locality
+            ?? placemarks?.first?.subLocality
+            ?? placemarks?.first?.name
+        if let name, !name.isEmpty {
+            self.cityName = name
+            return name
+        }
+        return nil
     }
 
     /// Resolve a manual city string to a coordinate via CLGeocoder.

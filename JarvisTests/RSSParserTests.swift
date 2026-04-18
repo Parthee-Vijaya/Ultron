@@ -51,5 +51,6 @@ final class RSSParserTests: XCTestCase {
         XCTAssertEqual(NewsHeadline.Source.dr.displayName, "DR")
         XCTAssertEqual(NewsHeadline.Source.tv2.displayName, "TV2")
         XCTAssertEqual(NewsHeadline.Source.bbc.displayName, "BBC")
+        XCTAssertEqual(NewsHeadline.Source.cnn.displayName, "CNN")
     }
 }

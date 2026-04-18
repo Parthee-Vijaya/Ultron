@@ -97,27 +97,47 @@ struct InfoModeView: View {
         }
     }
 
+    @State private var newsSource: NewsHeadline.Source = .dr
+
     private var newsTile: some View {
-        tile(title: "DR Top 3", icon: "newspaper.fill") {
-            if service.drHeadlines.isEmpty {
+        tile(title: "Nyheder", icon: "newspaper.fill") {
+            if service.newsBySource.values.allSatisfy({ $0.isEmpty }) {
                 placeholder("Henter nyheder…")
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(service.drHeadlines.prefix(3)) { item in
-                        Button {
-                            if let url = item.link { NSWorkspace.shared.open(url) }
-                        } label: {
-                            HStack(alignment: .top, spacing: 6) {
-                                Circle()
-                                    .fill(JarvisTheme.neonCyan.opacity(0.6))
-                                    .frame(width: 4, height: 4).padding(.top, 5)
-                                Text(item.title)
-                                    .font(.caption).foregroundStyle(.white.opacity(0.9))
-                                    .multilineTextAlignment(.leading).lineLimit(2)
-                                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Kilde", selection: $newsSource) {
+                        ForEach(NewsHeadline.Source.allCases) { src in
+                            Text(src.displayName).tag(src)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.mini)
+                    .labelsHidden()
+
+                    let items = service.newsBySource[newsSource] ?? []
+                    if items.isEmpty {
+                        Text("Ingen nyheder lige nu")
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(items.prefix(3)) { item in
+                                Button {
+                                    if let url = item.link { NSWorkspace.shared.open(url) }
+                                } label: {
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Circle()
+                                            .fill(JarvisTheme.neonCyan.opacity(0.6))
+                                            .frame(width: 4, height: 4).padding(.top, 5)
+                                        Text(item.title)
+                                            .font(.caption).foregroundStyle(.white.opacity(0.9))
+                                            .multilineTextAlignment(.leading).lineLimit(2)
+                                        Spacer(minLength: 0)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -161,13 +181,15 @@ struct InfoModeView: View {
         return tile(title: "Claude Code", icon: "sparkles", fullWidth: true) {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
+                    infoRow("I dag", value: todayLine)
                     infoRow("I alt", value: "\(formatTokens(s.totalTokens)) · \(s.totalSessions) sessioner")
-                    infoRow("Seneste", value: latestSessionLine)
+                    infoRow("Kørt", value: formatHours(s.totalActiveHours))
                     if let first = s.firstSessionDate {
                         infoRow("Siden", value: firstSessionFormatter.string(from: first))
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
+                    infoRow("Seneste", value: latestSessionLine)
                     infoRow("Daily", value: budgetRow(used: s.todayTokens, limit: claudeDailyLimit))
                     infoRow("Weekly", value: budgetRow(used: s.weekTokens, limit: claudeWeeklyLimit))
                 }
@@ -179,7 +201,63 @@ struct InfoModeView: View {
                 budgetBar(label: "Denne uge", used: s.weekTokens, limit: claudeWeeklyLimit)
             }
             .padding(.top, 6)
+
+            if !s.recentProjects.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Seneste projekter")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    ForEach(s.recentProjects) { p in
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder.fill")
+                                .font(.caption2)
+                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            Text(p.label)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.9))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 6)
+                            Text(formatTokens(p.tokens))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(JarvisTheme.brightCyan)
+                            Text("· \(relativeDay(p.lastUsed))")
+                                .font(.caption2)
+                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
         }
+    }
+
+    private var todayLine: String {
+        let s = service.claudeStats
+        var parts: [String] = [formatTokens(s.todayTokens)]
+        if s.todayMessages > 0 {
+            parts.append("\(s.todayMessages) beskeder")
+        }
+        if s.todaySessions > 0 {
+            parts.append("\(s.todaySessions) sessioner")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formatHours(_ h: Double) -> String {
+        if h < 1 { return String(format: "%.0f min", h * 60) }
+        if h < 24 { return String(format: "%.1f t", h) }
+        let days = Int(h / 24)
+        let rem = h.truncatingRemainder(dividingBy: 24)
+        return "\(days)d \(String(format: "%.0ft", rem))"
+    }
+
+    private func relativeDay(_ date: Date) -> String {
+        let seconds = Date().timeIntervalSince(date)
+        if seconds < 3600 { return "for \(Int(seconds / 60)) min siden" }
+        if seconds < 86_400 { return "for \(Int(seconds / 3600))t siden" }
+        let days = Int(seconds / 86_400)
+        return "\(days)d siden"
     }
 
     /// "620K / 1M" style string used inside the two-column infoRow.

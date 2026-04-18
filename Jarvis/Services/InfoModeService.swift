@@ -16,11 +16,14 @@ final class InfoModeService {
 
     // Data tiles
     private(set) var weather: WeatherSnapshot?
-    private(set) var drHeadlines: [NewsHeadline] = []
+    private(set) var newsBySource: [NewsHeadline.Source: [NewsHeadline]] = [:]
     private(set) var commute: CommuteEstimate?
     private(set) var commuteError: String?
     private(set) var systemInfo: SystemInfoSnapshot = SystemInfoSnapshot()
     private(set) var claudeStats: ClaudeStatsSnapshot = .empty
+
+    /// Convenience: DR headlines. Kept for call sites that expect it.
+    var drHeadlines: [NewsHeadline] { newsBySource[.dr] ?? [] }
 
     // Async-action state for the manual buttons
     private(set) var isRunningSpeedtest = false
@@ -46,15 +49,16 @@ final class InfoModeService {
         // Fire all tiles in parallel — no tile blocks another.
         async let sysBasics = systemInfoService.fetchBasics()
         async let weatherResult: WeatherSnapshot? = loadWeather()
-        async let drResult: [NewsHeadline] = (try? await newsService.fetch(source: .dr, limit: 3)) ?? []
+        async let newsResult: [NewsHeadline.Source: [NewsHeadline]] =
+            newsService.fetchAll(maxPerSource: 3)
         async let commuteResult = loadCommute()
         async let claudeResult = claudeStatsService.fetch()
 
-        let (sys, w, news, com, claude) = await (sysBasics, weatherResult, drResult, commuteResult, claudeResult)
+        let (sys, w, news, com, claude) = await (sysBasics, weatherResult, newsResult, commuteResult, claudeResult)
 
         self.systemInfo = sys
         self.weather = w
-        self.drHeadlines = news
+        self.newsBySource = news
         self.claudeStats = claude
         switch com {
         case .success(let est): self.commute = est; self.commuteError = nil
@@ -89,8 +93,8 @@ final class InfoModeService {
                 return try? await weatherService.fetch(for: coord, locationLabel: label)
             }
         }
-        if let coord = await locationService.refresh() {
-            let label = locationService.cityName ?? "Din lokation"
+        // Await reverse geocode so the tile shows "Næstved" instead of "Din lokation".
+        if let (coord, label) = await locationService.refreshWithCity() {
             return try? await weatherService.fetch(for: coord, locationLabel: label)
         }
         return nil
@@ -105,13 +109,13 @@ final class InfoModeService {
         guard let home = locationService.homeAddress, !home.isEmpty else {
             return .failure(CommuteError.missingHomeAddress.localizedDescription ?? "Mangler hjemadresse")
         }
-        guard let coord = await locationService.refresh() else {
+        guard let (coord, label) = await locationService.refreshWithCity() else {
             return .failure(CommuteError.missingCurrentLocation.localizedDescription ?? "Ingen lokation")
         }
         do {
             let estimate = try await commuteService.estimate(
                 from: coord,
-                originLabel: locationService.cityName ?? "Din lokation",
+                originLabel: label,
                 toAddress: home
             )
             return .success(estimate)
