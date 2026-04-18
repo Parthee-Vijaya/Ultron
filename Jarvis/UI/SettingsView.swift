@@ -763,7 +763,7 @@ struct SettingsAboutPane: View {
                         .resizable()
                         .frame(width: 64, height: 64)
                     VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
-                        Text("Jarvis").font(.title.weight(.bold))
+                        Text(Constants.displayName).font(.title.weight(.bold))
                         Text("Version \(Constants.appVersion)")
                             .foregroundStyle(.secondary)
                         Text("AI voice assistant for macOS. Gemini + Claude + on-device speech.")

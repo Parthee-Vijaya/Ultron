@@ -2,8 +2,11 @@ import AVFoundation
 
 enum Constants {
     // MARK: - App
+    /// Display name shown in UI. Code/bundle uses unstylised "Jarvis" to avoid
+    /// breaking Keychain-service IDs and log paths.
+    static let displayName = "J.A.R.V.I.S"
     static let appName = "Jarvis"
-    static let appVersion = "5.0.0-alpha.6"
+    static let appVersion = "5.0.0-alpha.7"
     static let bundleID = "pavi.Jarvis"
 
     // MARK: - Spacing scale (use these instead of magic numbers)

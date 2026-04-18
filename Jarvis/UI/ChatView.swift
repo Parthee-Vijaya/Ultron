@@ -43,7 +43,7 @@ struct ChatView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 )
-            Text("Jarvis")
+            Text(Constants.displayName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(JarvisTheme.textPrimary)
             Spacer()

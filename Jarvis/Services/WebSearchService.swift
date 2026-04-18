@@ -1,22 +1,30 @@
 import Foundation
 
-/// One hit from a web search. The Gemini prompt reducer reads these and
-/// formats them into context lines.
+/// One hit from a web-search fallback. Fed to Gemini as context so the model
+/// doesn't have to rely on stale training-data facts.
 struct SearchResult: Equatable, Sendable {
     let title: String
     let snippet: String
     let url: String
 
-    /// Plain-text line suitable for prepending to a Gemini prompt.
     var promptLine: String {
         "• \(title) — \(snippet) (\(url))"
     }
 }
 
-/// Front-ends DuckDuckGo's public HTML endpoint — no API key, no rate limit
-/// for reasonable use, privacy-friendly. Returns the top N result rows
-/// extracted from the markup so we can prepend them as context to Gemini
-/// when grounding needs to be reliable.
+/// Fetches live reference material for factual questions. v5.0.0-alpha.7
+/// switched away from DDG's HTML endpoint after they started returning a
+/// bot-detection "anomaly modal" to our scraper.
+///
+/// New strategy:
+///   1. **DuckDuckGo Instant Answer JSON API** (`api.duckduckgo.com`) — no
+///      captcha, returns an Abstract + Related Topics when the query has an
+///      encyclopedic answer. Works for names, places, definitions.
+///   2. **Wikipedia OpenSearch + Summary** — fallback when DDG has no
+///      abstract. Guarantees at least one grounded result for anything that
+///      has a Wikipedia page.
+///
+/// Both endpoints are public, key-free, rate-limit-friendly for personal use.
 actor WebSearchService {
     static let shared = WebSearchService()
 
@@ -24,120 +32,135 @@ actor WebSearchService {
 
     init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10
-        // DDG sometimes responds slower than generativelanguage — keep the
-        // resource timeout generous so we don't lose results over flaky wifi.
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = 6
+        config.timeoutIntervalForResource = 15
         self.session = URLSession(configuration: config)
     }
 
     func search(query: String, limit: Int = 3) async -> [SearchResult] {
-        guard let encoded = query.trimmingCharacters(in: .whitespaces)
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              !encoded.isEmpty,
-              let url = URL(string: "https://html.duckduckgo.com/html/?q=\(encoded)") else {
-            return []
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return [] }
+
+        // Run DDG + Wikipedia in parallel — whichever has data wins / they stack.
+        async let ddgResults = fetchDDGInstantAnswer(query: trimmed)
+        async let wikiResults = fetchWikipediaSummaries(query: trimmed, limit: limit)
+
+        let (ddg, wiki) = await (ddgResults, wikiResults)
+        var combined = ddg + wiki
+        if combined.count > limit {
+            combined = Array(combined.prefix(limit))
         }
 
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605 Jarvis/5.0",
-                         forHTTPHeaderField: "User-Agent")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                  let html = String(data: data, encoding: .utf8) else {
-                LoggingService.shared.log("WebSearch: non-200 or non-UTF8 from DDG", level: .warning)
-                return []
-            }
-            return parseResults(html: html, limit: limit)
-        } catch {
-            LoggingService.shared.log("WebSearch failed: \(error.localizedDescription)", level: .warning)
-            return []
+        if combined.isEmpty {
+            LoggingService.shared.log("WebSearch: no results for '\(trimmed)'", level: .warning)
+        } else {
+            LoggingService.shared.log("WebSearch: \(combined.count) results (\(ddg.count) DDG + \(wiki.count) Wiki) for '\(trimmed.prefix(60))'")
         }
+        return combined
     }
 
-    // MARK: - Parsing
+    // MARK: - DuckDuckGo Instant Answer
 
-    /// Minimal regex-based scraper. DDG's HTML result blocks consistently look like:
-    ///
-    ///     <a class="result__a" href="/l/?uddg=…">TITLE</a>
-    ///     …
-    ///     <a class="result__snippet" …>SNIPPET</a>
-    ///
-    /// where the `href` for titles is a DDG redirect we decode back to the real URL.
-    private func parseResults(html: String, limit: Int) -> [SearchResult] {
+    private func fetchDDGInstantAnswer(query: String) async -> [SearchResult] {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.duckduckgo.com/?q=\(encoded)&format=json&no_html=1&skip_disambig=1") else {
+            return []
+        }
+        guard let (data, _) = try? await session.data(from: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return []
+        }
+
         var results: [SearchResult] = []
-        var cursor = html.startIndex
 
-        while results.count < limit, cursor < html.endIndex {
-            guard let titleStart = html.range(of: "class=\"result__a\"", range: cursor..<html.endIndex),
-                  let hrefRange = html.range(of: "href=\"", range: titleStart.upperBound..<html.endIndex),
-                  let hrefEnd = html.range(of: "\"", range: hrefRange.upperBound..<html.endIndex) else {
-                break
+        // Abstract — typically the top-billed instant answer.
+        if let abstract = root["AbstractText"] as? String, !abstract.isEmpty {
+            let source = (root["AbstractSource"] as? String) ?? "DuckDuckGo"
+            let sourceURL = (root["AbstractURL"] as? String) ?? "https://duckduckgo.com/?q=\(encoded)"
+            results.append(SearchResult(
+                title: source,
+                snippet: abstract,
+                url: sourceURL
+            ))
+        }
+
+        // Direct answer (e.g., calculations, definitions)
+        if let answer = root["Answer"] as? String, !answer.isEmpty {
+            results.append(SearchResult(
+                title: "Answer",
+                snippet: answer,
+                url: "https://duckduckgo.com/?q=\(encoded)"
+            ))
+        }
+
+        // First 2 related topics for breadth
+        if let related = root["RelatedTopics"] as? [[String: Any]] {
+            for topic in related.prefix(2) {
+                guard let text = topic["Text"] as? String, !text.isEmpty else { continue }
+                let firstURL = topic["FirstURL"] as? String ?? ""
+                // Related-topic titles are typically the first few words
+                let title = text.components(separatedBy: " - ").first ?? text
+                let snippet = text.count > title.count
+                    ? String(text.dropFirst(title.count)).trimmingCharacters(in: CharacterSet(charactersIn: " -"))
+                    : text
+                results.append(SearchResult(
+                    title: title,
+                    snippet: snippet.isEmpty ? text : snippet,
+                    url: firstURL
+                ))
             }
-            let rawHref = String(html[hrefRange.upperBound..<hrefEnd.lowerBound])
-            let resolvedURL = decodeRedirect(rawHref)
+        }
 
-            guard let titleBodyStart = html.range(of: ">", range: hrefEnd.upperBound..<html.endIndex),
-                  let titleBodyEnd = html.range(of: "</a>", range: titleBodyStart.upperBound..<html.endIndex) else {
-                cursor = hrefEnd.upperBound
-                continue
+        return results
+    }
+
+    // MARK: - Wikipedia
+
+    private func fetchWikipediaSummaries(query: String, limit: Int) async -> [SearchResult] {
+        // 1) opensearch → top matching titles
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let openURL = URL(string: "https://en.wikipedia.org/w/api.php?action=opensearch&search=\(encoded)&limit=\(limit)&format=json") else {
+            return []
+        }
+        guard let (data, _) = try? await session.data(from: openURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [Any],
+              root.count >= 4,
+              let titles = root[1] as? [String],
+              let urls = root[3] as? [String] else {
+            return []
+        }
+
+        var results: [SearchResult] = []
+        // 2) for each title, fetch its summary in parallel
+        await withTaskGroup(of: SearchResult?.self) { group in
+            for (index, title) in titles.enumerated() where index < limit {
+                let pageURL = (index < urls.count) ? urls[index] : ""
+                group.addTask { [weak self] in
+                    await self?.fetchWikiSummary(title: title, pageURL: pageURL)
+                }
             }
-            let title = String(html[titleBodyStart.upperBound..<titleBodyEnd.lowerBound])
-                .stripHTMLTags()
-                .decodedHTMLEntities()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            // Next snippet — search forward from the title close.
-            var snippet = ""
-            if let snippetStart = html.range(of: "class=\"result__snippet\"", range: titleBodyEnd.upperBound..<html.endIndex),
-               let snippetBodyStart = html.range(of: ">", range: snippetStart.upperBound..<html.endIndex),
-               let snippetBodyEnd = html.range(of: "</a>", range: snippetBodyStart.upperBound..<html.endIndex) {
-                snippet = String(html[snippetBodyStart.upperBound..<snippetBodyEnd.lowerBound])
-                    .stripHTMLTags()
-                    .decodedHTMLEntities()
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                cursor = snippetBodyEnd.upperBound
-            } else {
-                cursor = titleBodyEnd.upperBound
-            }
-
-            if !title.isEmpty {
-                results.append(SearchResult(title: title, snippet: snippet, url: resolvedURL))
+            for await result in group {
+                if let result { results.append(result) }
             }
         }
         return results
     }
 
-    /// DDG wraps result links in `/l/?uddg=<url-encoded>&rut=…`. Pull out the real URL.
-    private func decodeRedirect(_ raw: String) -> String {
-        guard raw.contains("uddg=") else { return raw }
-        let cleaned = raw.hasPrefix("//") ? "https:" + raw : raw
-        if let url = URL(string: cleaned),
-           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let uddg = components.queryItems?.first(where: { $0.name == "uddg" })?.value {
-            return uddg
+    private func fetchWikiSummary(title: String, pageURL: String) async -> SearchResult? {
+        let normalised = title.replacingOccurrences(of: " ", with: "_")
+        guard let encoded = normalised.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(encoded)") else {
+            return nil
         }
-        return raw
-    }
-}
-
-// MARK: - String helpers (HTML)
-
-extension String {
-    fileprivate func stripHTMLTags() -> String {
-        self.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    }
-
-    fileprivate func decodedHTMLEntities() -> String {
-        self
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&#x27;", with: "'")
-            .replacingOccurrences(of: "&nbsp;", with: " ")
+        guard let (data, _) = try? await session.data(from: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let extract = root["extract"] as? String, !extract.isEmpty else {
+            return nil
+        }
+        return SearchResult(
+            title: (root["title"] as? String) ?? title,
+            snippet: extract,
+            url: pageURL.isEmpty ? "https://en.wikipedia.org/wiki/\(normalised)" : pageURL
+        )
     }
 }

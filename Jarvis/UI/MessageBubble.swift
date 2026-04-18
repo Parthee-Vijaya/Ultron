@@ -47,7 +47,7 @@ struct MessageBubble: View {
 
     private var assistantBody: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Jarvis")
+            Text(Constants.displayName)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(JarvisTheme.textSecondary)
             MarkdownTextView(message.text, foregroundColor: JarvisTheme.textPrimary)

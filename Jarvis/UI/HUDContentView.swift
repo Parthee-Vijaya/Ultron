@@ -100,7 +100,7 @@ struct HUDContentView: View {
                     size: 18,
                     levelMonitor: audioLevel
                 )
-                Text(activeModeName.isEmpty ? "Jarvis" : activeModeName)
+                Text(activeModeName.isEmpty ? Constants.displayName : activeModeName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
@@ -167,7 +167,7 @@ struct HUDContentView: View {
                 Circle()
                     .fill(JarvisTheme.accent)
                     .frame(width: 8, height: 8)
-                Text("Jarvis")
+                Text(Constants.displayName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
