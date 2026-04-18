@@ -16,6 +16,7 @@ struct InfoModeView: View {
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
             VStack(spacing: 12) {
                 tilesRow
+                airAndMoonRow
                 commuteTile
                 claudeStatsTile
                 systemTile
@@ -73,6 +74,107 @@ struct InfoModeView: View {
             newsTile
         }
     }
+
+    private var airAndMoonRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            airQualityTile
+            moonTile
+        }
+    }
+
+    private var airQualityTile: some View {
+        tile(title: "Luft & UV", icon: "aqi.medium") {
+            if let air = service.airQuality {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(air.europeanAQI.map(String.init) ?? "—")
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("AQI")
+                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            }
+                            Text(air.aqiBand.label)
+                                .font(.caption)
+                                .foregroundStyle(aqiColor(air.aqiBand))
+                        }
+                        Spacer(minLength: 6)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(air.uvIndex.map { String(format: "%.1f", $0) } ?? "—")
+                                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("UV")
+                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            }
+                            Text(air.uvBand.label)
+                                .font(.caption)
+                                .foregroundStyle(uvColor(air.uvBand))
+                        }
+                    }
+                    if let pm25 = air.pm25 {
+                        Text(String(format: "PM2.5: %.1f µg/m³", pm25))
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                    }
+                }
+            } else {
+                placeholder("Henter luft…")
+            }
+        }
+    }
+
+    private var moonTile: some View {
+        let m = service.moon
+        return tile(title: "Måne", icon: "moon.fill") {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: m.phase.symbol)
+                    .font(.system(size: 36))
+                    .foregroundStyle(JarvisTheme.brightCyan)
+                    .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.phase.label)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("\(m.illuminationPercent) % oplyst")
+                        .font(.caption)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    Text("Næste fuldmåne \(Self.fullMoonFormatter.string(from: m.nextFullMoon))")
+                        .font(.caption2)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func aqiColor(_ band: AirQualitySnapshot.AQIBand) -> Color {
+        switch band {
+        case .excellent, .good: return JarvisTheme.brightCyan
+        case .moderate:         return JarvisTheme.neonCyan
+        case .poor:             return JarvisTheme.warningGlow
+        case .veryPoor, .extreme: return JarvisTheme.criticalGlow
+        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        }
+    }
+
+    private func uvColor(_ band: AirQualitySnapshot.UVBand) -> Color {
+        switch band {
+        case .low:              return JarvisTheme.brightCyan
+        case .moderate:         return JarvisTheme.neonCyan
+        case .high:             return JarvisTheme.warningGlow
+        case .veryHigh, .extreme: return JarvisTheme.criticalGlow
+        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        }
+    }
+
+    private static let fullMoonFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "d. MMM"
+        df.locale = Locale(identifier: "da_DK")
+        return df
+    }()
 
     private var sunTile: some View {
         tile(title: "Sol", icon: "sun.horizon.fill") {

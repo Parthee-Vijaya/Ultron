@@ -21,6 +21,8 @@ final class InfoModeService {
     private(set) var commuteError: String?
     private(set) var systemInfo: SystemInfoSnapshot = SystemInfoSnapshot()
     private(set) var claudeStats: ClaudeStatsSnapshot = .empty
+    private(set) var airQuality: AirQualitySnapshot?
+    private(set) var moon: MoonSnapshot = MoonService.current()
 
     /// Convenience: DR headlines. Kept for call sites that expect it.
     var drHeadlines: [NewsHeadline] { newsBySource[.dr] ?? [] }
@@ -40,6 +42,7 @@ final class InfoModeService {
     private let commuteService = CommuteService()
     private let systemInfoService = SystemInfoService()
     private let claudeStatsService = ClaudeStatsService()
+    private let airQualityService = AirQualityService()
     private let cache = InfoCache()
 
     /// Guards against concurrent `refresh` calls. The view calls `.task` on appear
@@ -73,6 +76,9 @@ final class InfoModeService {
         // Each tile runs as its own Task and mutates its own published property
         // as soon as its data is ready. The view (which observes each property
         // individually) paints tile-by-tile instead of waiting on the slowest.
+        // Moon phase is a pure local computation — refresh synchronously.
+        self.moon = MoonService.current()
+
         let task = Task { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
@@ -81,6 +87,7 @@ final class InfoModeService {
                 group.addTask { await self.loadWeatherTile() }
                 group.addTask { await self.loadNewsTile() }
                 group.addTask { await self.loadCommuteTile() }
+                group.addTask { await self.loadAirQualityTile() }
             }
             await MainActor.run {
                 self.lastRefresh = Date()
@@ -117,6 +124,23 @@ final class InfoModeService {
             self.newsBySource = news
             await cache.storeNews(news)
         }
+    }
+
+    private func loadAirQualityTile() async {
+        // Reuse whatever coordinate the weather tile settled on.
+        let coord: CLLocationCoordinate2D
+        if let manual = locationService.manualCity, !manual.isEmpty,
+           let (c, _) = await locationService.geocodeManual(manual) {
+            coord = c
+        } else if let (c, _) = await locationService.refreshWithCity() {
+            coord = c
+        } else if let home = locationService.homeAddress, !home.isEmpty,
+                  let (c, _) = await locationService.geocodeManual(home) {
+            coord = c
+        } else {
+            coord = LocationService.naestvedCoordinate
+        }
+        self.airQuality = try? await airQualityService.fetch(for: coord)
     }
 
     private func loadCommuteTile() async {
