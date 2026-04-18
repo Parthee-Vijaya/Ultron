@@ -49,7 +49,18 @@ final class RSSParserTests: XCTestCase {
 
     func testSourceDisplayNames() {
         XCTAssertEqual(NewsHeadline.Source.dr.displayName, "DR")
-        XCTAssertEqual(NewsHeadline.Source.tv2.displayName, "TV2")
+        XCTAssertEqual(NewsHeadline.Source.politiken.displayName, "Politiken")
         XCTAssertEqual(NewsHeadline.Source.bbc.displayName, "BBC")
+        XCTAssertEqual(NewsHeadline.Source.guardian.displayName, "Guardian")
+        XCTAssertEqual(NewsHeadline.Source.reddit.displayName, "Reddit")
+        XCTAssertEqual(NewsHeadline.Source.hackernews.displayName, "Hacker News")
+    }
+
+    func testInfoPanelSourcesExcludesRedditAndHN() {
+        // The Cockpit segmented picker is intentionally limited to the four
+        // mainstream publishers — Reddit + Hacker News live in Briefing only.
+        XCTAssertEqual(NewsHeadline.Source.infoPanelSources, [.dr, .politiken, .bbc, .guardian])
+        XCTAssertFalse(NewsHeadline.Source.infoPanelSources.contains(.reddit))
+        XCTAssertFalse(NewsHeadline.Source.infoPanelSources.contains(.hackernews))
     }
 }

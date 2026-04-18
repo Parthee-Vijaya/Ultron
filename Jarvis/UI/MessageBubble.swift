@@ -8,6 +8,9 @@ import SwiftUI
 /// desktop app lays out its threads.
 struct MessageBubble: View {
     let message: ChatMessage
+    /// v1.1.5: optional retry callback rendered when `message.lastError` is
+    /// set. Nil means retry is unavailable (legacy ChatView path).
+    var onRetry: ((ChatMessage) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -52,6 +55,31 @@ struct MessageBubble: View {
                 .foregroundStyle(JarvisTheme.textSecondary)
             MarkdownTextView(message.text, foregroundColor: JarvisTheme.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if message.lastError != nil, let onRetry {
+                retryPill(onRetry)
+            }
         }
+    }
+
+    private func retryPill(_ onRetry: @escaping (ChatMessage) -> Void) -> some View {
+        Button { onRetry(message) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Prøv igen")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(JarvisTheme.accent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(JarvisTheme.surfaceElevated)
+                    .overlay(Capsule().stroke(JarvisTheme.accent.opacity(0.5), lineWidth: 0.75))
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 2)
+        .help("Gentag samme prompt")
     }
 }

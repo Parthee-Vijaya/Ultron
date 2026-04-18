@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build DMG and attach to release
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build DMG
+        run: ./build-dmg.sh
+
+      # Optional notarization — gated on the secrets being set. Skipped for
+      # alpha releases; enable by setting APPLE_ID / APPLE_TEAM_ID /
+      # APPLE_APP_PASSWORD in repo secrets.
+      - name: Notarize (optional)
+        if: env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: ./scripts/notarize.sh
+
+      - name: Find DMG
+        id: find-dmg
+        run: |
+          DMG=$(ls Jarvis-*.dmg | head -1)
+          echo "dmg=$DMG" >> $GITHUB_OUTPUT
+
+      - name: Upload DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.find-dmg.outputs.dmg }}
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

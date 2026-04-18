@@ -9,15 +9,16 @@ struct UptodateView: View {
         VStack(spacing: 0) {
             header
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    weatherSection
-                    newsSection
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+            VStack(spacing: 12) {
+                topRow
+                middleRow
+                historyTile
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .frame(width: 720, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .task {
             await service.refresh()
         }
@@ -30,7 +31,7 @@ struct UptodateView: View {
             Image(systemName: "dot.radiowaves.left.and.right")
                 .foregroundStyle(JarvisTheme.neonCyan)
                 .shadow(color: JarvisTheme.neonCyan.opacity(0.7), radius: 4)
-            Text("Uptodate")
+            Text("Briefing")
                 .font(.headline)
                 .foregroundStyle(JarvisTheme.brightCyan)
             if let last = service.lastRefresh {
@@ -66,181 +67,143 @@ struct UptodateView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: - Weather
+    // MARK: - Rows
 
-    @ViewBuilder
-    private var weatherSection: some View {
-        if let weather = service.weather {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(weather.locationLabel)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
-                        Text(WeatherCode.label(for: weather.current.weatherCode))
-                            .font(.callout)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.75))
-                    }
-                    Spacer()
-                    Image(systemName: WeatherCode.symbol(for: weather.current.weatherCode))
-                        .font(.system(size: 40))
-                        .foregroundStyle(JarvisTheme.brightCyan)
-                        .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 6)
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(Int(weather.current.temperature.rounded()))°")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("føles \(Int(weather.current.feelsLike.rounded()))°")
-                            .font(.caption)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
-                    }
-                }
-
-                hourlyStrip(weather.hourly)
-                dailyStrip(weather.daily)
-            }
-            .padding(14)
-            .background {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(JarvisTheme.surfaceElevated.opacity(0.65))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(JarvisTheme.neonCyan.opacity(0.25), lineWidth: 1))
-            }
-        } else if service.state == .loading {
-            HStack {
-                ProgressView().controlSize(.small)
-                Text("Henter vejr…").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-            }.padding(14)
-        } else {
-            Text("Ingen vejrdata endnu. Klik ⟳ for at opdatere.")
-                .font(.caption).foregroundStyle(.secondary).padding(14)
+    private var topRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            newsSourceTile(.dr)
+            newsSourceTile(.politiken)
+            newsSourceTile(.bbc)
         }
     }
 
-    private func hourlyStrip(_ hourly: [WeatherSnapshot.HourlyPoint]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(hourly.prefix(12)) { point in
-                    VStack(spacing: 4) {
-                        Text(hourFormatter.string(from: point.time))
-                            .font(.caption2)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
-                        Image(systemName: WeatherCode.symbol(for: point.weatherCode))
-                            .foregroundStyle(JarvisTheme.neonCyan)
-                        Text("\(Int(point.temperature.rounded()))°")
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                        if let p = point.precipitationProbability, p >= 20 {
-                            Text("\(p)%")
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.brightCyan.opacity(0.85))
+    private var middleRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            newsSourceTile(.guardian)
+            newsSourceTile(.reddit)
+            newsSourceTile(.hackernews)
+        }
+    }
+
+    // MARK: - News source tile
+
+    private func newsSourceTile(_ source: NewsHeadline.Source) -> some View {
+        let items = service.news[source] ?? []
+        return tile(title: source.displayName, icon: sourceIcon(for: source)) {
+            if items.isEmpty {
+                placeholder(service.state == .loading ? "Henter…" : "Ingen nyheder")
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items.prefix(3)) { item in
+                        Button {
+                            if let link = item.link { NSWorkspace.shared.open(link) }
+                        } label: {
+                            HStack(alignment: .top, spacing: 6) {
+                                Circle()
+                                    .fill(JarvisTheme.neonCyan.opacity(0.5))
+                                    .frame(width: 4, height: 4)
+                                    .padding(.top, 5)
+                                Text(item.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(2)
+                                Spacer(minLength: 0)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .frame(minWidth: 34)
-                }
-            }
-            .padding(.vertical, 4)
-        }
-    }
-
-    private func dailyStrip(_ daily: [WeatherSnapshot.DailyPoint]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(daily.prefix(7)) { day in
-                HStack {
-                    Text(dayFormatter.string(from: day.date))
-                        .font(.caption)
-                        .frame(width: 40, alignment: .leading)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.75))
-                    Image(systemName: WeatherCode.symbol(for: day.weatherCode))
-                        .frame(width: 18)
-                        .foregroundStyle(JarvisTheme.brightCyan)
-                    Spacer()
-                    Text("\(Int(day.tempMin.rounded()))°")
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
-                        .font(.caption.monospacedDigit())
-                    Text("—").foregroundStyle(JarvisTheme.neonCyan.opacity(0.3))
-                    Text("\(Int(day.tempMax.rounded()))°")
-                        .foregroundStyle(.white)
-                        .font(.caption.monospacedDigit())
                 }
             }
         }
-        .padding(.top, 4)
     }
 
-    // MARK: - News
+    private func sourceIcon(for source: NewsHeadline.Source) -> String {
+        switch source {
+        case .dr, .politiken, .bbc, .guardian: return "newspaper"
+        case .reddit:                          return "bubble.left.and.bubble.right"
+        case .hackernews:                      return "terminal"
+        }
+    }
+
+    // MARK: - History tile
 
     @ViewBuilder
-    private var newsSection: some View {
-        if service.news.isEmpty && service.state == .loading {
-            HStack { ProgressView().controlSize(.small); Text("Henter nyheder…").font(.caption).foregroundStyle(.secondary); Spacer() }
-        } else {
-            ForEach(NewsHeadline.Source.allCases) { source in
-                if let items = service.news[source], !items.isEmpty {
-                    newsSectionFor(source: source, items: items)
+    private var historyTile: some View {
+        tile(title: "Denne dag i historien", icon: "calendar", fullWidth: true) {
+            if service.history.isEmpty {
+                placeholder(service.state == .loading ? "Henter historie…" : "Ingen events")
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(service.history) { event in
+                        Button {
+                            if let url = event.pageURL { NSWorkspace.shared.open(url) }
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(String(event.year))
+                                    .font(.caption.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(JarvisTheme.brightCyan)
+                                    .frame(width: 44, alignment: .leading)
+                                    .padding(.top, 1)
+                                Text(event.text)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
     }
 
-    private func newsSectionFor(source: NewsHeadline.Source, items: [NewsHeadline]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    // MARK: - Shared tile shell (mirrors InfoModeView.tile)
+
+    @ViewBuilder
+    private func tile<Content: View>(
+        title: String,
+        icon: String,
+        fullWidth: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text(source.displayName)
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(JarvisTheme.neonCyan)
+                Text(title)
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background {
-                        Capsule()
-                            .fill(JarvisTheme.neonCyan.opacity(0.15))
-                            .overlay(Capsule().stroke(JarvisTheme.neonCyan.opacity(0.5), lineWidth: 0.75))
-                    }
                     .foregroundStyle(JarvisTheme.brightCyan)
-                Image(systemName: "newspaper")
-                    .font(.caption2)
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.5))
-                Spacer()
+                Spacer(minLength: 0)
             }
-            ForEach(items.prefix(6)) { item in
-                Button {
-                    if let link = item.link { NSWorkspace.shared.open(link) }
-                } label: {
-                    HStack(alignment: .top, spacing: 6) {
-                        Circle()
-                            .fill(JarvisTheme.neonCyan.opacity(0.5))
-                            .frame(width: 5, height: 5)
-                            .padding(.top, 6)
-                        Text(item.title)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.9))
-                            .multilineTextAlignment(.leading)
-                        Spacer(minLength: 4)
-                        if let date = item.publishedAt {
-                            Text(timeAgo(date))
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.45))
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: fullWidth ? .infinity : nil, alignment: .leading)
+        .frame(maxHeight: fullWidth ? nil : .infinity, alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(JarvisTheme.surfaceElevated.opacity(0.65))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(JarvisTheme.neonCyan.opacity(0.25), lineWidth: 1))
+        }
+    }
+
+    private func placeholder(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            if service.state == .loading {
+                ProgressView().controlSize(.mini)
             }
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
     // MARK: - Formatters
-
-    private var hourFormatter: DateFormatter {
-        let df = DateFormatter()
-        df.dateFormat = "HH"
-        return df
-    }
-
-    private var dayFormatter: DateFormatter {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "da_DK")
-        df.dateFormat = "EEE"
-        return df
-    }
 
     private func timeAgo(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))

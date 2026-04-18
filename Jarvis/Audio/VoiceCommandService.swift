@@ -163,8 +163,10 @@ final class VoiceCommandService {
 
         let command: Command?
         switch true {
-        case tail.hasPrefix("info"):                     command = .info
-        case tail.hasPrefix("update"),
+        case tail.hasPrefix("cockpit"),
+             tail.hasPrefix("info"):                     command = .info
+        case tail.hasPrefix("briefing"),
+             tail.hasPrefix("update"),
              tail.hasPrefix("uptodate"),
              tail.hasPrefix("nyheder"),
              tail.hasPrefix("vejr"):                     command = .uptodate

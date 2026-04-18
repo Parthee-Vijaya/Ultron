@@ -91,6 +91,26 @@ final class GeminiClient {
         }
     }
 
+    /// Text + image in one turn — used by the β.11 chat command bar's Vision
+    /// mode. Routes through the search-grounded path when the mode asks for it,
+    /// so the model still has to cite sources for any claim not visible on
+    /// screen.
+    func sendTextWithImage(prompt: String, mode: Mode, imageData: Data) async -> Result<String, Error> {
+        if mode.webSearch {
+            return await withRetry { [weak self] in
+                guard let self else { throw GeminiRESTError.missingAPIKey }
+                return try await self.sendTextWithSearch(prompt: prompt, imageData: imageData, mode: mode)
+            }
+        }
+        return await withRetry { [weak self] in
+            guard let self else { throw GeminiRESTError.missingAPIKey }
+            return try await self.generateOnce(
+                parts: [.text(prompt), .data(mime: "image/png", imageData)],
+                mode: mode
+            )
+        }
+    }
+
     // MARK: - Chat (multi-turn, no cached SDK object — history is passed each turn)
 
     /// Stream a multi-turn chat reply. History should *not* include the current

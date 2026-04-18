@@ -11,7 +11,9 @@ enum BuiltInModes {
         model: .flash,
         outputType: .paste,
         maxTokens: 2048,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "mic.fill",
+        inputKind: .voice
     )
 
     static let vibeCode = Mode(
@@ -26,7 +28,9 @@ enum BuiltInModes {
         model: .pro,
         outputType: .paste,
         maxTokens: 4096,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "curlybraces.square",
+        inputKind: .text
     )
 
     static let professional = Mode(
@@ -40,7 +44,9 @@ enum BuiltInModes {
         model: .flash,
         outputType: .paste,
         maxTokens: 2048,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "briefcase.fill",
+        inputKind: .text
     )
 
     static let qna = Mode(
@@ -80,7 +86,9 @@ enum BuiltInModes {
         outputType: .hud,
         maxTokens: 1500,
         isBuiltIn: true,
-        webSearch: true
+        webSearch: true,
+        icon: "questionmark.circle",
+        inputKind: .text
     )
 
     static let vision = Mode(
@@ -109,7 +117,9 @@ enum BuiltInModes {
         outputType: .hud,
         maxTokens: 2048,
         isBuiltIn: true,
-        webSearch: true
+        webSearch: true,
+        icon: "camera.viewfinder",
+        inputKind: .screenshot
     )
 
     static let chat = Mode(
@@ -123,7 +133,9 @@ enum BuiltInModes {
         model: .flash,
         outputType: .chat,
         maxTokens: 4096,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "bubble.left.and.bubble.right.fill",
+        inputKind: .text
     )
 
     static let translate = Mode(
@@ -137,7 +149,35 @@ enum BuiltInModes {
         model: .flash,
         outputType: .paste,
         maxTokens: 2048,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "character.bubble.fill",
+        inputKind: .text
+    )
+
+    static let agent = Mode(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000009")!,
+        name: "Agent",
+        systemPrompt: """
+        Du er J.A.R.V.I.S i agent-mode. Du får adgang til read-only filværktøjer \
+        (read_file, list_directory, search_files, stat_file) begrænset til brugerens \
+        godkendte arbejdsområde.
+
+        Arbejdsgang:
+        1. Brug værktøjer frit til at samle evidens før du svarer.
+        2. Citér eksakte filstier når du drager konklusioner fra filindhold.
+        3. Hvis en sti ligger uden for arbejdsområdet, sig det og foreslå at \
+        brugeren udvider i Settings → Agent.
+        4. Kort og konkret svar. Samme sprog som brugeren.
+        """,
+        model: .flash,  // placeholder — agent routes through Anthropic, not Gemini
+        outputType: .chat,
+        maxTokens: 4096,
+        isBuiltIn: true,
+        webSearch: false,
+        provider: .anthropic,
+        agentTools: true,
+        icon: "sparkles",
+        inputKind: .text
     )
 
     static let summarize = Mode(
@@ -158,8 +198,10 @@ enum BuiltInModes {
         model: .flash,
         outputType: .hud,
         maxTokens: 2048,
-        isBuiltIn: true
+        isBuiltIn: true,
+        icon: "doc.text.magnifyingglass",
+        inputKind: .document
     )
 
-    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize]
+    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize, agent]
 }

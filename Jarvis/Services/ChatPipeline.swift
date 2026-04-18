@@ -29,12 +29,21 @@ final class ChatPipeline {
     // MARK: - Text
 
     func sendTextMessage(_ text: String) {
+        sendTextMessage(text, mode: nil)
+    }
+
+    /// Overload used by the ChatCommandRouter (β.11) so different chat command-bar
+    /// modes (Q&A, Translate, etc.) can reuse the same pipeline with mode-specific
+    /// system prompts + web-search flags. Passing `nil` falls back to the pipeline's
+    /// init-time mode (default: `.chat`).
+    func sendTextMessage(_ text: String, mode: Mode?) {
         chatSession.addUserMessage(text)
         let placeholderID = chatSession.addAssistantMessage("")
         chatSession.isStreaming = true
 
+        let effectiveMode = mode ?? self.mode
         Task {
-            await streamResponse(placeholderID: placeholderID, text: text)
+            await streamResponse(placeholderID: placeholderID, text: text, mode: effectiveMode)
         }
     }
 
@@ -63,15 +72,16 @@ final class ChatPipeline {
 
     // MARK: - Streaming core
 
-    private func streamResponse(placeholderID: UUID, text: String) async {
+    private func streamResponse(placeholderID: UUID, text: String, mode: Mode? = nil) async {
         // Build history from the session, dropping the trailing user message
         // (which is passed separately to the REST call) and any empty placeholders.
         let history = chatSession.currentHistory(excludingLastUser: true)
+        let activeMode = mode ?? self.mode
 
         let result = await geminiClient.sendChatStreaming(
             history: history,
             text: text,
-            mode: mode,
+            mode: activeMode,
             onDelta: { [weak self] delta in
                 self?.chatSession.appendToAssistant(id: placeholderID, delta: delta)
             }
@@ -81,10 +91,12 @@ final class ChatPipeline {
         case .success(let cleaned):
             chatSession.updateAssistant(id: placeholderID, text: cleaned)
         case .failure(let error):
-            let existing = chatSession.messages.first(where: { $0.id == placeholderID })?.text ?? ""
-            if existing.isEmpty {
-                chatSession.updateAssistant(id: placeholderID, text: "Fejl: \(error.localizedDescription)")
-            }
+            chatSession.markAssistantError(
+                id: placeholderID,
+                errorText: "Fejl: \(error.localizedDescription)",
+                sourceModeID: activeMode.id,
+                sourcePrompt: text
+            )
         }
 
         chatSession.isStreaming = false

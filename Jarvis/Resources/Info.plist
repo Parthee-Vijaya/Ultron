@@ -12,5 +12,20 @@
     <string>Jarvis uses on-device speech recognition to show a live preview of what you're saying in the HUD. No audio leaves your Mac for this preview.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Jarvis uses your location to show weather for your area in Uptodate mode. You can also set a city manually in Settings if you prefer.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Jarvis shows your next calendar event as a tile in the Cockpit panel. Access is read-only.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Jarvis shows your next calendar event as a tile in the Cockpit panel. Access is read-only.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>pavi.Jarvis.url</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>jarvis</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

@@ -99,4 +99,31 @@ class ConversationStore {
             try? FileManager.default.removeItem(at: file)
         }
     }
+
+    // MARK: - Metadata (v1.1.5)
+
+    /// Slim view of a conversation used by the sidebar — lets us render the
+    /// full history list without deserialising every conversation's messages
+    /// up-front. Loads on-demand when the user picks one.
+    struct Metadata: Identifiable, Equatable {
+        let id: UUID
+        let title: String
+        let updatedAt: Date
+        let messageCount: Int
+    }
+
+    /// All conversations' metadata, newest-first. We still round-trip through
+    /// `Conversation.displayTitle` for consistency, but the sidebar only
+    /// renders title / timestamp / count — so this is strictly cheaper than
+    /// `loadAll()` for users with many saved chats.
+    func loadAllMetadata() -> [Metadata] {
+        loadAll().map { convo in
+            Metadata(
+                id: convo.id,
+                title: convo.displayTitle,
+                updatedAt: convo.updatedAt,
+                messageCount: convo.messages.count
+            )
+        }
+    }
 }

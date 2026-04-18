@@ -31,6 +31,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         accessKeyProvider: { [weak keychainService] in keychainService?.getPorcupineKey() }
     )
     let voiceCommandService = VoiceCommandService()
+    /// β.11: agent chat now shares the main chat session so the unified
+    /// Spotlight-style chat window renders regular chat + agent turns in one
+    /// conversation. Kept as a computed alias so legacy call sites still
+    /// resolve without edits.
+    /// v1.1.5: agent mode now uses the shared `chatSession` directly.
+    private var agentChatPipeline: AgentChatPipeline?
+    private var commandRouter: ChatCommandRouter?
+    /// Shared buffer for the chat command-bar text field. Lets
+    /// `handleChatVoiceToggle` push dictation transcripts back into the UI.
+    private let chatInputBuffer = ChatInputBuffer()
     let locationService = LocationService()
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
@@ -62,7 +72,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupWakeWord()
             setupVoiceCommands()
             checkFirstLaunch()
+            // v1.1.7: spawn any MCP servers the user declared in ~/.jarvis/mcp.json
+            // and register their tools with the shared agent registry. Runs in
+            // the background — we don't block app launch if a server is slow.
+            Task { await MCPRegistry.shared.bootstrap() }
+            // v1.2.0: ping GitHub Releases once a day to see if a newer
+            // Jarvis DMG is published. Non-blocking; prompts only when a
+            // higher semver is found.
+            updateChecker.checkIfDue()
             LoggingService.shared.log("Jarvis v\(Constants.appVersion) started")
+        }
+    }
+
+    nonisolated func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            MCPRegistry.shared.shutdown()
+        }
+    }
+
+    /// v1.1.8: handle incoming `jarvis://…` URLs from the OS / Shortcuts /
+    /// automation tools. Supported:
+    ///   - jarvis://chat?prompt=TEXT      — open chat, pre-fill the bar
+    ///   - jarvis://qna?prompt=TEXT       — run Q&A with the given prompt
+    ///   - jarvis://summarize             — open picker + summarize
+    ///   - jarvis://vision?prompt=TEXT    — capture screen + ask
+    ///   - jarvis://info / ://briefing    — open the respective panel
+    nonisolated func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            for url in urls { handleJarvisURL(url) }
+        }
+    }
+
+    private func handleJarvisURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "jarvis" else { return }
+        let action = (url.host ?? "").lowercased()
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let prompt = components?.queryItems?.first(where: { $0.name == "prompt" })?.value ?? ""
+
+        switch action {
+        case "chat":
+            refreshConversationHistory()
+            hudController.showChat()
+            if !prompt.isEmpty { chatInputBuffer.text = prompt }
+        case "qna":
+            refreshConversationHistory()
+            hudController.showChat()
+            if !prompt.isEmpty, let router = commandRouter {
+                Task { await router.run(mode: BuiltInModes.qna, input: prompt) }
+            }
+        case "summarize":
+            summaryService.summarizeInteractively()
+        case "vision":
+            refreshConversationHistory()
+            hudController.showChat()
+            if let router = commandRouter {
+                Task { await router.run(mode: BuiltInModes.vision, input: prompt) }
+            }
+        case "info", "cockpit":
+            hudController.showInfoMode()
+        case "briefing", "uptodate":
+            hudController.showUptodate()
+        default:
+            LoggingService.shared.log("Unknown jarvis:// action: \(action)", level: .warning)
         }
     }
 
@@ -117,6 +188,166 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.hudController.hudState.isPinned.toggle()
         }
+
+        // Agent chat — lazily instantiated on first ⌥⇧A press so users who
+        // never use it don't pay the Anthropic provider init cost.
+        hudController.onAgentChatSend = { [weak self] text in
+            self?.ensureAgentChatPipeline().sendTextMessage(text)
+        }
+        hudController.onAgentApprove = { [weak self] in
+            self?.ensureAgentChatPipeline().approvePendingConfirmation()
+        }
+        hudController.onAgentReject = { [weak self] in
+            self?.ensureAgentChatPipeline().rejectPendingConfirmation()
+        }
+
+        // β.11: unified command router — chat window uses this to dispatch
+        // all modes (text/voice/screenshot/document) into a single message
+        // thread, keeping direct hotkey invocations unchanged.
+        let router = ChatCommandRouter(
+            chatPipeline: chatPipeline,
+            agentChatPipeline: { [weak self] in self?.ensureAgentChatPipeline() },
+            geminiClient: geminiClient,
+            screenCapture: screenCapture,
+            summaryService: summaryService,
+            chatSession: chatSession
+        )
+        commandRouter = router
+        hudController.commandRouter = router
+        hudController.availableModes = modeManager.allModes
+        hudController.shortcutLookup = { [weak self] mode in
+            guard let self else { return nil }
+            return self.shortcutStringFor(mode: mode)
+        }
+        hudController.onToggleVoiceRecord = { [weak self] in
+            self?.handleChatVoiceToggle()
+        }
+        hudController.inputBuffer = chatInputBuffer
+        hudController.permissionsManager = permissions
+        hudController.hasGeminiKey = keychainService.hasAPIKey
+        hudController.hasAnthropicKey = keychainService.getAnthropicKey() != nil
+        hudController.onOpenSettings = { [weak self] in
+            self?.openSettings()
+        }
+
+        // v1.1.5: history sidebar wiring. Metadata is re-read every time the
+        // chat panel opens so newly-saved conversations show up without a
+        // restart. Load/delete pipe through to the on-disk store.
+        hudController.onLoadConversation = { [weak self] id in
+            self?.loadConversationIntoChat(id: id)
+        }
+        hudController.onDeleteConversation = { [weak self] id in
+            self?.deleteConversation(id: id)
+        }
+        refreshConversationHistory()
+    }
+
+    private let conversationStore = ConversationStore()
+    private let updateChecker = UpdateChecker()
+
+    private func refreshConversationHistory() {
+        hudController.conversationHistory = conversationStore.loadAllMetadata()
+    }
+
+    private func loadConversationIntoChat(id: UUID) {
+        guard let conversation = conversationStore.load(id: id) else { return }
+        chatSession.replaceMessages(conversation.messages)
+        hudController.currentConversationID = id
+    }
+
+    private func deleteConversation(id: UUID) {
+        conversationStore.delete(id: id)
+        if hudController.currentConversationID == id {
+            chatSession.clear()
+            hudController.currentConversationID = nil
+        }
+        refreshConversationHistory()
+    }
+
+    /// Map a mode to the hotkey that invokes its equivalent direct action,
+    /// so the mode picker can show keyboard shortcuts. Only built-ins with a
+    /// matching `HotkeyAction` return a value — custom user modes just show
+    /// no shortcut.
+    private func shortcutStringFor(mode: Mode) -> String? {
+        let action: HotkeyAction?
+        switch mode.id {
+        case BuiltInModes.dictation.id: action = .dictation
+        case BuiltInModes.qna.id:       action = .qna
+        case BuiltInModes.vision.id:    action = .vision
+        case BuiltInModes.translate.id: action = .translate
+        case BuiltInModes.summarize.id: action = .summarize
+        case BuiltInModes.agent.id:     action = .agent
+        case BuiltInModes.chat.id:      action = .toggleChat
+        default:                        action = nil
+        }
+        guard let action else { return nil }
+        return hotkeyBindings.binding(for: action).displayString
+    }
+
+    /// Chat-dictation: record mic directly (not via RecordingPipeline, which
+    /// would paste/HUD), transcribe, drop the result into the chat's command
+    /// text so the user can review + edit before sending. Written as a single
+    /// method so there's only one state machine to reason about.
+    private func handleChatVoiceToggle() {
+        let buffer = chatInputBuffer
+        if buffer.isRecording {
+            // Stop + transcribe
+            let audioData = audioCapture.stopRecording()
+            buffer.isRecording = false
+            guard !audioData.isEmpty else { return }
+            buffer.isTranscribing = true
+
+            Task { [weak self] in
+                guard let self else { return }
+                let result = await self.geminiClient.sendAudio(audioData, mode: BuiltInModes.dictation)
+                await MainActor.run {
+                    buffer.isTranscribing = false
+                    switch result {
+                    case .success(let transcript):
+                        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            // Append to whatever the user had already typed —
+                            // lets them combine typed context with spoken content.
+                            if buffer.text.isEmpty {
+                                buffer.text = trimmed
+                            } else {
+                                buffer.text += " " + trimmed
+                            }
+                        }
+                    case .failure(let error):
+                        LoggingService.shared.log("Chat dictation transcription failed: \(error)", level: .warning)
+                    }
+                }
+            }
+        } else {
+            // Only start if RecordingPipeline isn't already using the mic
+            // via a hotkey — sharing AudioCaptureManager with two concurrent
+            // sessions would step on the WAV header.
+            if case .recording = hudController.hudState.currentPhase { return }
+            do {
+                try audioCapture.startRecording()
+                buffer.isRecording = true
+            } catch {
+                LoggingService.shared.log("Chat dictation start failed: \(error)", level: .warning)
+            }
+        }
+    }
+
+    /// Returns the agent pipeline, instantiating it on first use. Reads the
+    /// user's preferred Claude model from UserDefaults so Settings updates
+    /// can take effect on the next run.
+    private func ensureAgentChatPipeline() -> AgentChatPipeline {
+        if let pipeline = agentChatPipeline { return pipeline }
+        let provider = AnthropicProvider(keychain: keychainService)
+        let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel)
+            ?? "claude-sonnet-4-6"
+        let pipeline = AgentChatPipeline(
+            provider: provider,
+            chatSession: chatSession,
+            modelID: modelID
+        )
+        agentChatPipeline = pipeline
+        return pipeline
     }
 
     /// Called by `SettingsView` after the user saves a new API key so the chat pipeline
@@ -172,7 +403,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         infoItem.keyEquivalentModifierMask = [.option]
         statusMenu.addItem(infoItem)
 
-        let uptodateItem = NSMenuItem(title: "Uptodate (vejr + nyheder)", action: #selector(openUptodateFromMenu), keyEquivalent: "u")
+        let uptodateItem = NSMenuItem(title: "Briefing", action: #selector(openUptodateFromMenu), keyEquivalent: "u")
         uptodateItem.target = self
         uptodateItem.keyEquivalentModifierMask = [.option]
         statusMenu.addItem(uptodateItem)
@@ -187,6 +418,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hotkeysItem = NSMenuItem(title: "Tilpas hotkeys…", action: #selector(openHotkeysSettings), keyEquivalent: "")
         hotkeysItem.target = self
         statusMenu.addItem(hotkeysItem)
+
+        let cheatSheetItem = NSMenuItem(title: "Hotkeys & kommandoer…", action: #selector(openCheatSheet), keyEquivalent: "?")
+        cheatSheetItem.target = self
+        cheatSheetItem.keyEquivalentModifierMask = [.command]
+        statusMenu.addItem(cheatSheetItem)
+
+        let updatesItem = NSMenuItem(title: "Søg efter opdateringer…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updatesItem.target = self
+        statusMenu.addItem(updatesItem)
 
         let settingsItem = NSMenuItem(title: "Indstillinger…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -257,6 +497,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         presentSettings(tab: .hotkeys)
     }
 
+    private var cheatSheetWindow: NSWindow?
+
+    @objc private func checkForUpdates() {
+        Task { await updateChecker.checkNow(userInitiated: true) }
+    }
+
+    @objc private func openCheatSheet() {
+        if let window = cheatSheetWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = HotkeyCheatSheet(bindings: hotkeyBindings) { [weak self] in
+            self?.cheatSheetWindow?.close()
+        }
+        let host = NSHostingController(rootView: view)
+        host.sizingOptions = .preferredContentSize
+        let window = NSWindow(contentViewController: host)
+        window.title = "Hotkeys & kommandoer"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        cheatSheetWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func openInfoModeFromMenu() {
         if hudController.isInfoModeVisible {
             hudController.close()
@@ -314,14 +581,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .idle:
             button.image = NSImage(systemSymbolName: "waveform.circle", accessibilityDescription: "Jarvis")
             button.contentTintColor = nil
+            button.title = ""
         case .recording:
             button.image = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")
             button.contentTintColor = .systemRed
+            button.title = " Optager"
         case .processing:
             button.image = NSImage(systemSymbolName: "gear.circle", accessibilityDescription: "Processing")
             button.contentTintColor = .systemOrange
+            button.title = " Arbejder"
         }
         button.image?.isTemplate = (state == .idle)
+        button.font = NSFont.systemFont(ofSize: 11, weight: .medium)
     }
 
     // MARK: - Hotkeys
@@ -361,6 +632,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hudController.saveChatFrame()
                 self.hudController.close()
             } else {
+                self.refreshConversationHistory()
                 self.hudController.showChat()
             }
         }
@@ -383,6 +655,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         hotkeyManager.onSummarize = { [weak self] in
             self?.summaryService.summarizeInteractively()
+        }
+
+        hotkeyManager.onAgent = { [weak self] in
+            guard let self else { return }
+            if self.hudController.isAgentChatVisible {
+                self.hudController.saveChatFrame()
+                self.hudController.close()
+            } else {
+                self.hudController.showAgentChat()
+            }
         }
 
         hotkeyManager.onInfoMode = { [weak self] in

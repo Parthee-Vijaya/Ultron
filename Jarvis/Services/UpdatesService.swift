@@ -1,10 +1,10 @@
-import CoreLocation
 import Foundation
 import Observation
 
-/// Coordinates weather + news fetches for Uptodate mode. Kicks off both in parallel
-/// so the panel pops in quickly. Caches the last snapshot in memory so re-opening
-/// within 5 min doesn't refetch.
+/// Coordinates the Uptodate panel: multi-source news (DR/TV2/BBC/CNN + Reddit
+/// r/news + Hacker News) + "denne dag i historien" from Wikipedia. Fires
+/// everything in parallel so the panel pops in quickly. Caches in memory so
+/// re-opening within 5 min is instant.
 @MainActor
 @Observable
 final class UpdatesService {
@@ -16,13 +16,16 @@ final class UpdatesService {
     }
 
     private(set) var state: LoadState = .idle
-    private(set) var weather: WeatherSnapshot?
     private(set) var news: [NewsHeadline.Source: [NewsHeadline]] = [:]
+    private(set) var history: [HistoryEvent] = []
     private(set) var lastRefresh: Date?
 
+    // Parameter retained for API back-compat (AppDelegate wires the
+    // locationService in before the weather tile was dropped); we no longer
+    // use it but removing it would cascade into every call site.
     private let locationService: LocationService
-    private let weatherService = WeatherService()
     private let newsService = NewsService()
+    private let historyService = HistoryService()
     private let cacheTTL: TimeInterval = 5 * 60
 
     init(locationService: LocationService) {
@@ -36,31 +39,21 @@ final class UpdatesService {
         }
         state = .loading
 
-        async let weatherTask = loadWeather()
         async let newsTask = newsService.fetchAll()
+        async let historyTask: [HistoryEvent] = (try? await historyService.fetchToday(limit: 5)) ?? []
 
-        let (weatherResult, newsResult) = await (weatherTask, newsTask)
+        let (newsResult, historyResult) = await (newsTask, historyTask)
 
-        self.weather = weatherResult
-        self.news = newsResult
+        // Don't clobber cached news with an all-empty response — keeps stale
+        // headlines on screen if Reddit is temporarily throttling us, etc.
+        if newsResult.values.contains(where: { !$0.isEmpty }) {
+            self.news = newsResult
+        }
+        if !historyResult.isEmpty {
+            self.history = historyResult
+        }
+
         self.lastRefresh = Date()
         self.state = .loaded
-    }
-
-    private func loadWeather() async -> WeatherSnapshot? {
-        // 1) Manual city overrides everything if set.
-        if let manual = locationService.manualCity, !manual.isEmpty {
-            if let (coord, label) = await locationService.geocodeManual(manual) {
-                return try? await weatherService.fetch(for: coord, locationLabel: label)
-            }
-        }
-        // 2) Try CoreLocation.
-        if let coord = await locationService.refresh() {
-            let label = locationService.cityName ?? "Din lokation"
-            return try? await weatherService.fetch(for: coord, locationLabel: label)
-        }
-        // 3) Default to Copenhagen if nothing else works so the user isn't greeted with a blank card.
-        let fallback = CLLocationCoordinate2D(latitude: 55.6761, longitude: 12.5683)
-        return try? await weatherService.fetch(for: fallback, locationLabel: "København (fallback)")
     }
 }

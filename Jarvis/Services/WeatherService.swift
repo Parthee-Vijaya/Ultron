@@ -25,7 +25,15 @@ struct WeatherSnapshot: Codable, Equatable {
         let tempMax: Double
         let weatherCode: Int
         let precipitationProbability: Int?
+        let sunrise: Date?
+        let sunset: Date?
         var id: Date { date }
+
+        /// Length of daylight, if both sunrise and sunset are known.
+        var daylight: TimeInterval? {
+            guard let sunrise, let sunset, sunset > sunrise else { return nil }
+            return sunset.timeIntervalSince(sunrise)
+        }
     }
 
     let fetchedAt: Date
@@ -33,6 +41,12 @@ struct WeatherSnapshot: Codable, Equatable {
     let current: CurrentValues
     let hourly: [HourlyPoint]
     let daily: [DailyPoint]
+
+    /// Today's sun info, if available.
+    var todaySun: (sunrise: Date, sunset: Date)? {
+        guard let today = daily.first, let r = today.sunrise, let s = today.sunset else { return nil }
+        return (r, s)
+    }
 }
 
 enum WeatherServiceError: LocalizedError {
@@ -55,7 +69,7 @@ final class WeatherService {
             URLQueryItem(name: "longitude", value: String(coordinate.longitude)),
             URLQueryItem(name: "current", value: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m"),
             URLQueryItem(name: "hourly", value: "temperature_2m,precipitation_probability,weather_code"),
-            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max"),
+            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset"),
             URLQueryItem(name: "forecast_days", value: "7"),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "wind_speed_unit", value: "ms")
@@ -63,7 +77,7 @@ final class WeatherService {
         guard let url = components.url else { throw WeatherServiceError.invalidResponse }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15
+        request.timeoutInterval = 8
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw WeatherServiceError.invalidResponse }
@@ -133,17 +147,23 @@ final class WeatherService {
         let dayMin = (daily["temperature_2m_min"] as? [Double]) ?? []
         let dayCodes = (daily["weather_code"] as? [Int]) ?? []
         let dayPrecip = (daily["precipitation_probability_max"] as? [Int?]) ?? []
+        let daySunrise = (daily["sunrise"] as? [String]) ?? []
+        let daySunset = (daily["sunset"] as? [String]) ?? []
 
         var dailyPoints: [WeatherSnapshot.DailyPoint] = []
         for i in 0..<min(dayTimes.count, dayMax.count, dayMin.count, dayCodes.count) {
             guard let d = parseDay(dayTimes[i]) else { continue }
             let probability = i < dayPrecip.count ? dayPrecip[i] : nil
+            let sunrise = i < daySunrise.count ? parseLocal(daySunrise[i]) : nil
+            let sunset = i < daySunset.count ? parseLocal(daySunset[i]) : nil
             dailyPoints.append(WeatherSnapshot.DailyPoint(
                 date: d,
                 tempMin: dayMin[i],
                 tempMax: dayMax[i],
                 weatherCode: dayCodes[i],
-                precipitationProbability: probability
+                precipitationProbability: probability,
+                sunrise: sunrise,
+                sunset: sunset
             ))
         }
 

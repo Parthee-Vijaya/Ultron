@@ -53,6 +53,21 @@ final class DocumentSummaryService {
         }
     }
 
+    /// β.11: summarise for chat-mode invocations. Returns a markdown string
+    /// ready to be appended as an assistant bubble, instead of routing through
+    /// the HUD. No HUD side-effects.
+    func summarizeForChat(url: URL) async throws -> String {
+        let document = try reader.read(url: url)
+        let prompt = buildPrompt(for: document)
+        let result = await geminiClient.sendText(prompt: prompt, mode: BuiltInModes.summarize)
+        switch result {
+        case .success(let text):
+            return decorate(summary: text, for: document)
+        case .failure(let error):
+            throw error
+        }
+    }
+
     // MARK: - Private
 
     private func buildPrompt(for document: DocumentReader.ExtractedDocument) -> String {

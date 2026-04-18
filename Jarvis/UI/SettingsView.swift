@@ -3,7 +3,7 @@ import SwiftUI
 /// Sidebar items for the Settings window. Exposed so `AppDelegate` can deep-link
 /// into a specific pane via menu-bar items.
 enum SettingsTab: Hashable, CaseIterable, Identifiable {
-    case apiKey, hud, modes, hotkeys, location, voice, claude, history, usage, about
+    case apiKey, hud, modes, hotkeys, location, voice, claude, agent, history, usage, about
 
     var id: Self { self }
 
@@ -16,6 +16,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .location: return "Lokation"
         case .voice:    return "Stemme"
         case .claude:   return "Claude Code"
+        case .agent:    return "Agent"
         case .history:  return "Samtaler"
         case .usage:    return "Forbrug"
         case .about:    return "Om"
@@ -31,6 +32,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .location: return "location.fill"
         case .voice:    return "mic.and.signal.meter.fill"
         case .claude:   return "sparkles"
+        case .agent:    return "wand.and.stars"
         case .history:  return "clock.arrow.circlepath"
         case .usage:    return "chart.bar.fill"
         case .about:    return "info.circle"
@@ -84,6 +86,8 @@ struct SettingsView: View {
             SettingsVoicePane()
         case .claude:
             SettingsClaudePane()
+        case .agent:
+            SettingsAgentPane()
         case .history:
             SettingsHistoryPane()
         case .usage:
@@ -749,6 +753,120 @@ struct SettingsUsagePane: View {
             Text("\(tokens.formatted()) tokens").monospacedDigit()
         }
         .font(.callout)
+    }
+}
+
+// MARK: - Agent pane
+
+struct SettingsAgentPane: View {
+    @AppStorage(Constants.Defaults.agentClaudeModel) private var claudeModel: String = "claude-sonnet-4-6"
+    @State private var workspaceRoots: [String] = []
+    @State private var newRoot: String = ""
+
+    private static let availableModels = [
+        ("claude-sonnet-4-6", "Claude Sonnet 4.6 — hurtig og billig ($3/$15 per M)"),
+        ("claude-opus-4-7",   "Claude Opus 4.7 — stærkere, 5× dyrere ($15/$75 per M)")
+    ]
+
+    private var logURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Jarvis/agent.log")
+    }
+
+    var body: some View {
+        SettingsPane(
+            title: "Agent",
+            subtitle: "⌥⇧A åbner en chat hvor J.A.R.V.I.S kan læse, skrive og flytte filer — altid med din godkendelse for ændringer."
+        ) {
+            SettingsCard(
+                title: "Claude-model",
+                footer: "Sonnet 4.6 er sjovt billig til de fleste tool-use-flows. Opus 4.7 kan være det værd til meget lange multi-trins-opgaver."
+            ) {
+                Picker("Model", selection: $claudeModel) {
+                    ForEach(Self.availableModels, id: \.0) { pair in
+                        Text(pair.1).tag(pair.0)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            SettingsCard(
+                title: "Arbejdsområde (allowed roots)",
+                footer: "Agent-værktøjer kan kun læse/skrive inden for disse rødder. Destruktive handlinger (skrive, omdøb, slet) kræver stadig din godkendelse pr. gang."
+            ) {
+                if workspaceRoots.isEmpty {
+                    Text("Ingen ekstra rødder — standarden er ~/Desktop, ~/Downloads og ~/Documents/Jarvis.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(workspaceRoots.enumerated()), id: \.offset) { index, root in
+                            if index > 0 { Divider() }
+                            HStack {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(.secondary)
+                                Text(root)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1).truncationMode(.middle)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    workspaceRoots.remove(at: index)
+                                    saveRoots()
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(.vertical, Constants.Spacing.sm)
+                        }
+                    }
+                }
+
+                HStack {
+                    TextField("~/Documents/Projekter", text: $newRoot)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Tilføj") {
+                        let trimmed = newRoot.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        if !workspaceRoots.contains(trimmed) {
+                            workspaceRoots.append(trimmed)
+                            saveRoots()
+                        }
+                        newRoot = ""
+                    }
+                    .disabled(newRoot.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            SettingsCard(
+                title: "Audit-log",
+                footer: "Hver tool-eksekvering skrives her med argumenter + resultat + varighed."
+            ) {
+                HStack {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Text("~/Library/Logs/Jarvis/agent.log")
+                        .font(.caption.monospaced())
+                    Spacer()
+                    Button("Åbn") {
+                        if FileManager.default.fileExists(atPath: logURL.path) {
+                            NSWorkspace.shared.open(logURL)
+                        } else {
+                            NSWorkspace.shared.open(logURL.deletingLastPathComponent())
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .onAppear {
+            workspaceRoots = UserDefaults.standard.stringArray(forKey: Constants.Defaults.agentWorkspaceRoots) ?? []
+        }
+    }
+
+    private func saveRoots() {
+        UserDefaults.standard.set(workspaceRoots, forKey: Constants.Defaults.agentWorkspaceRoots)
     }
 }
 

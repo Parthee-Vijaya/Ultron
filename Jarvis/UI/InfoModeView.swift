@@ -14,17 +14,19 @@ struct InfoModeView: View {
         VStack(spacing: 0) {
             header
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
-            ScrollView {
-                VStack(spacing: 12) {
-                    tilesRow
-                    claudeStatsTile
-                    systemTile
-                    networkActions
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+            VStack(spacing: 12) {
+                tilesRow
+                airAndMoonRow
+                commuteTile
+                claudeStatsTile
+                systemTile
+                networkActions
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .frame(width: 680, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .task { await service.refresh() }
     }
 
@@ -35,7 +37,7 @@ struct InfoModeView: View {
             Image(systemName: "info.circle.fill")
                 .foregroundStyle(JarvisTheme.neonCyan)
                 .shadow(color: JarvisTheme.neonCyan.opacity(0.7), radius: 4)
-            Text("Info")
+            Text("Cockpit")
                 .font(.headline)
                 .foregroundStyle(JarvisTheme.brightCyan)
             if let last = service.lastRefresh {
@@ -68,8 +70,207 @@ struct InfoModeView: View {
     private var tilesRow: some View {
         HStack(alignment: .top, spacing: 12) {
             weatherTile
+            sunTile
             newsTile
         }
+    }
+
+    private var airAndMoonRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            airQualityTile
+            moonTile
+            calendarTile
+        }
+    }
+
+    private var calendarTile: some View {
+        tile(title: "Kalender", icon: "calendar") {
+            switch service.calendarAccess {
+            case .granted:
+                if let event = service.nextEvent {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(event.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                        Text(event.prettyStart)
+                            .font(.caption)
+                            .foregroundStyle(JarvisTheme.brightCyan)
+                        if let minutes = event.minutesUntilStart, minutes > 0 {
+                            Text("om \(minutes) min")
+                                .font(.caption2)
+                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        }
+                        if let location = event.location, !location.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "mappin.and.ellipse")
+                                    .font(.caption2)
+                                Text(location)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                        }
+                    }
+                } else {
+                    Text("Ingen events de næste 7 dage")
+                        .font(.caption2)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                }
+            case .notDetermined:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Giv adgang til din kalender for at se næste event her.")
+                        .font(.caption2)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    Button("Giv adgang") {
+                        Task { await service.requestCalendarAccess() }
+                    }
+                    .controlSize(.small)
+                }
+            case .denied, .writeOnly:
+                Text("Kalender-adgang blokeret i System-indstillinger.")
+                    .font(.caption2)
+                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+            }
+        }
+    }
+
+    private var airQualityTile: some View {
+        tile(title: "Luft & UV", icon: "aqi.medium") {
+            if let air = service.airQuality {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(air.europeanAQI.map(String.init) ?? "—")
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("AQI")
+                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            }
+                            Text(air.aqiBand.label)
+                                .font(.caption)
+                                .foregroundStyle(aqiColor(air.aqiBand))
+                        }
+                        Spacer(minLength: 6)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(air.uvIndex.map { String(format: "%.1f", $0) } ?? "—")
+                                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("UV")
+                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            }
+                            Text(air.uvBand.label)
+                                .font(.caption)
+                                .foregroundStyle(uvColor(air.uvBand))
+                        }
+                    }
+                    if let pm25 = air.pm25 {
+                        Text(String(format: "PM2.5: %.1f µg/m³", pm25))
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                    }
+                }
+            } else {
+                placeholder("Henter luft…")
+            }
+        }
+    }
+
+    private var moonTile: some View {
+        let m = service.moon
+        return tile(title: "Måne", icon: "moon.fill") {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: m.phase.symbol)
+                    .font(.system(size: 36))
+                    .foregroundStyle(JarvisTheme.brightCyan)
+                    .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.phase.label)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("\(m.illuminationPercent) % oplyst")
+                        .font(.caption)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    Text("Næste fuldmåne \(Self.fullMoonFormatter.string(from: m.nextFullMoon))")
+                        .font(.caption2)
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func aqiColor(_ band: AirQualitySnapshot.AQIBand) -> Color {
+        switch band {
+        case .excellent, .good: return JarvisTheme.brightCyan
+        case .moderate:         return JarvisTheme.neonCyan
+        case .poor:             return JarvisTheme.warningGlow
+        case .veryPoor, .extreme: return JarvisTheme.criticalGlow
+        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        }
+    }
+
+    private func uvColor(_ band: AirQualitySnapshot.UVBand) -> Color {
+        switch band {
+        case .low:              return JarvisTheme.brightCyan
+        case .moderate:         return JarvisTheme.neonCyan
+        case .high:             return JarvisTheme.warningGlow
+        case .veryHigh, .extreme: return JarvisTheme.criticalGlow
+        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        }
+    }
+
+    private static let fullMoonFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "d. MMM"
+        df.locale = Locale(identifier: "da_DK")
+        return df
+    }()
+
+    private var sunTile: some View {
+        tile(title: "Sol", icon: "sun.horizon.fill") {
+            if let sun = service.weather?.todaySun {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sunrise.fill")
+                            .foregroundStyle(JarvisTheme.brightCyan)
+                        Text(Self.hourMinute.string(from: sun.sunrise))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                    HStack(spacing: 8) {
+                        Image(systemName: "sunset.fill")
+                            .foregroundStyle(JarvisTheme.neonCyan)
+                        Text(Self.hourMinute.string(from: sun.sunset))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                    if let daylight = service.weather?.daily.first?.daylight {
+                        Text("Dagslys \(Self.prettyDaylight(daylight))")
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                            .padding(.top, 2)
+                    }
+                }
+            } else {
+                placeholder("Henter sol…")
+            }
+        }
+    }
+
+    private static let hourMinute: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        df.locale = Locale(identifier: "da_DK")
+        return df
+    }()
+
+    private static func prettyDaylight(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds / 3600)
+        let minutes = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
+        return "\(hours)t \(minutes) min"
     }
 
     private var weatherTile: some View {
@@ -97,60 +298,191 @@ struct InfoModeView: View {
         }
     }
 
+    @State private var newsSource: NewsHeadline.Source = .dr
+
     private var newsTile: some View {
-        tile(title: "DR Top 3", icon: "newspaper.fill") {
-            if service.drHeadlines.isEmpty {
+        tile(title: "Nyheder", icon: "newspaper.fill") {
+            if service.newsBySource.values.allSatisfy({ $0.isEmpty }) {
                 placeholder("Henter nyheder…")
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(service.drHeadlines.prefix(3)) { item in
-                        Button {
-                            if let url = item.link { NSWorkspace.shared.open(url) }
-                        } label: {
-                            HStack(alignment: .top, spacing: 6) {
-                                Circle()
-                                    .fill(JarvisTheme.neonCyan.opacity(0.6))
-                                    .frame(width: 4, height: 4).padding(.top, 5)
-                                Text(item.title)
-                                    .font(.caption).foregroundStyle(.white.opacity(0.9))
-                                    .multilineTextAlignment(.leading).lineLimit(2)
-                                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Kilde", selection: $newsSource) {
+                        ForEach(NewsHeadline.Source.infoPanelSources) { src in
+                            Text(src.displayName).tag(src)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.mini)
+                    .labelsHidden()
+
+                    let items = service.newsBySource[newsSource] ?? []
+                    if items.isEmpty {
+                        Text("Ingen nyheder lige nu")
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(items.prefix(3)) { item in
+                                Button {
+                                    if let url = item.link { NSWorkspace.shared.open(url) }
+                                } label: {
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Circle()
+                                            .fill(JarvisTheme.neonCyan.opacity(0.6))
+                                            .frame(width: 4, height: 4).padding(.top, 5)
+                                        Text(item.title)
+                                            .font(.caption).foregroundStyle(.white.opacity(0.9))
+                                            .multilineTextAlignment(.leading).lineLimit(2)
+                                        Spacer(minLength: 0)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
         }
     }
 
+    @State private var customDestination: String = ""
+
     private var commuteTile: some View {
-        tile(title: "Hjem", icon: "house.fill") {
-            if let commute = service.commute {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(commute.prettyTravelTime)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("til \(commute.toLabel)")
-                            .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
-                    }
-                    Text(commute.prettyDistance)
-                        .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+        tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
+            HStack(alignment: .top, spacing: 14) {
+                commuteStatsColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let commute = service.commute, !commute.routeCoordinates.isEmpty {
+                    CommuteMapView(
+                        origin: commute.origin,
+                        destination: commute.destination,
+                        coordinates: commute.routeCoordinates
+                    )
+                    .frame(width: 260, height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(JarvisTheme.neonCyan.opacity(0.35), lineWidth: 1)
+                    )
+                }
+            }
+
+            destinationInputRow
+                .padding(.top, 10)
+        }
+    }
+
+    private var commuteTitle: String {
+        service.customDestinationAddress == nil ? "Hjem" : "Rute"
+    }
+
+    @ViewBuilder
+    private var commuteStatsColumn: some View {
+        if let commute = service.commute {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(commute.prettyTravelTime)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("til \(commute.toLabel)")
+                        .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                }
+                Text(commute.prettyDistance)
+                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                if commute.baselineTravelTime != nil {
                     HStack(spacing: 4) {
-                        Image(systemName: "bolt.car.fill")
-                            .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
-                        Text(String(format: "Tesla ~%.1f kWh", commute.teslaKWh))
-                            .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                        Image(systemName: trafficIcon(commute.trafficCondition))
+                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                        Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
+                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
                     }
                 }
-            } else if let error = service.commuteError {
-                Text(error)
-                    .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
-                    .multilineTextAlignment(.leading)
-            } else {
-                placeholder("Beregner rute…")
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.car.fill")
+                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                    Text(String(format: "Tesla ~%.2f kWh", commute.teslaKWh))
+                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                }
+                Text("Fra \(commute.fromLabel)")
+                    .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    .padding(.top, 2)
             }
+        } else if let error = service.commuteError {
+            Text(error)
+                .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                .multilineTextAlignment(.leading)
+        } else {
+            placeholder("Beregner rute…")
+        }
+    }
+
+    private var destinationInputRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                TextField("Indtast adresse…", text: $customDestination)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .onSubmit(runCustomDestination)
+
+                Button(action: runCustomDestination) {
+                    if service.isRunningCustomCommute {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Text("Beregn").font(.caption.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(JarvisTheme.neonCyan)
+                .controlSize(.small)
+                .disabled(customDestination.trimmingCharacters(in: .whitespaces).isEmpty
+                          || service.isRunningCustomCommute)
+
+                if service.customDestinationAddress != nil {
+                    Button {
+                        customDestination = ""
+                        Task { await service.resetCustomCommute() }
+                    } label: {
+                        Label("Nulstil", systemImage: "arrow.uturn.backward")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            if let active = service.customDestinationAddress {
+                Text("Beregnet til: \(active)")
+                    .font(.caption2)
+                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+            }
+        }
+    }
+
+    private func runCustomDestination() {
+        let trimmed = customDestination.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        Task { await service.recomputeCommute(to: trimmed) }
+    }
+
+    private func trafficIcon(_ condition: CommuteEstimate.TrafficCondition) -> String {
+        switch condition {
+        case .free:    return "checkmark.circle.fill"
+        case .light:   return "car.fill"
+        case .heavy:   return "exclamationmark.triangle.fill"
+        case .severe:  return "exclamationmark.octagon.fill"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private func trafficColor(_ condition: CommuteEstimate.TrafficCondition) -> Color {
+        switch condition {
+        case .free:    return JarvisTheme.brightCyan
+        case .light:   return JarvisTheme.neonCyan
+        case .heavy:   return JarvisTheme.warningGlow
+        case .severe:  return JarvisTheme.criticalGlow
+        case .unknown: return JarvisTheme.neonCyan.opacity(0.5)
         }
     }
 
@@ -161,13 +493,15 @@ struct InfoModeView: View {
         return tile(title: "Claude Code", icon: "sparkles", fullWidth: true) {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
+                    infoRow("I dag", value: todayLine)
                     infoRow("I alt", value: "\(formatTokens(s.totalTokens)) · \(s.totalSessions) sessioner")
-                    infoRow("Seneste", value: latestSessionLine)
+                    infoRow("Kørt", value: formatHours(s.totalActiveHours))
                     if let first = s.firstSessionDate {
                         infoRow("Siden", value: firstSessionFormatter.string(from: first))
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
+                    infoRow("Seneste", value: latestSessionLine)
                     infoRow("Daily", value: budgetRow(used: s.todayTokens, limit: claudeDailyLimit))
                     infoRow("Weekly", value: budgetRow(used: s.weekTokens, limit: claudeWeeklyLimit))
                 }
@@ -179,7 +513,63 @@ struct InfoModeView: View {
                 budgetBar(label: "Denne uge", used: s.weekTokens, limit: claudeWeeklyLimit)
             }
             .padding(.top, 6)
+
+            if !s.recentProjects.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Seneste projekter")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    ForEach(s.recentProjects) { p in
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder.fill")
+                                .font(.caption2)
+                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            Text(p.label)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.9))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 6)
+                            Text(formatTokens(p.tokens))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(JarvisTheme.brightCyan)
+                            Text("· \(relativeDay(p.lastUsed))")
+                                .font(.caption2)
+                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
         }
+    }
+
+    private var todayLine: String {
+        let s = service.claudeStats
+        var parts: [String] = [formatTokens(s.todayTokens)]
+        if s.todayMessages > 0 {
+            parts.append("\(s.todayMessages) beskeder")
+        }
+        if s.todaySessions > 0 {
+            parts.append("\(s.todaySessions) sessioner")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formatHours(_ h: Double) -> String {
+        if h < 1 { return String(format: "%.0f min", h * 60) }
+        if h < 24 { return String(format: "%.1f t", h) }
+        let days = Int(h / 24)
+        let rem = h.truncatingRemainder(dividingBy: 24)
+        return "\(days)d \(String(format: "%.0ft", rem))"
+    }
+
+    private func relativeDay(_ date: Date) -> String {
+        let seconds = Date().timeIntervalSince(date)
+        if seconds < 3600 { return "for \(Int(seconds / 60)) min siden" }
+        if seconds < 86_400 { return "for \(Int(seconds / 3600))t siden" }
+        let days = Int(seconds / 86_400)
+        return "\(days)d siden"
     }
 
     /// "620K / 1M" style string used inside the two-column infoRow.
@@ -273,15 +663,11 @@ struct InfoModeView: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     infoRow("RAM", value: ramLine)
+                    infoRow("WiFi", value: wifiLine)
                     infoRow("DNS", value: service.systemInfo.dnsServers.first)
                     infoRow("Hardware", value: hardwareLine)
                 }
             }
-            // Commute tucked into System so the layout balances on narrower screens
-            HStack(spacing: 12) {
-                commuteTile
-            }
-            .padding(.top, 8)
         }
     }
 
@@ -373,6 +759,10 @@ struct InfoModeView: View {
         }
         .padding(12)
         .frame(maxWidth: fullWidth ? .infinity : nil, alignment: .leading)
+        // maxHeight: .infinity only applies in-row — when the tile is one of
+        // several in an HStack, every tile stretches to match the tallest.
+        // fullWidth tiles keep their natural height.
+        .frame(maxHeight: fullWidth ? nil : .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: 10)
                 .fill(JarvisTheme.surfaceElevated.opacity(0.65))
@@ -420,6 +810,21 @@ struct InfoModeView: View {
             return String(format: "%.1f GB fri / %.0f GB", max(0, total - used), total)
         }
         return String(format: "%.0f GB", total)
+    }
+
+    private var wifiLine: String? {
+        guard let wifi = service.systemInfo.wifi else { return nil }
+        var parts: [String] = []
+        if let ssid = wifi.ssid, !ssid.isEmpty {
+            parts.append(ssid)
+        }
+        if let rssi = wifi.rssi {
+            parts.append("\(rssi) dBm · \(wifi.qualityLabel)")
+        }
+        if let rate = wifi.transmitRate {
+            parts.append(String(format: "%.0f Mbps", rate))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var hardwareLine: String? {
