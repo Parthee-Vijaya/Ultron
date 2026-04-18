@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Chat HUD — Claude-desktop inspired layout. Minimal header, scrollable
+/// message area, clean input bar at the bottom.
 struct ChatView: View {
     let chatSession: ChatSession
     let onSend: (String) -> Void
@@ -13,17 +15,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             chatHeader
-
-            Divider()
-
-            // Messages
+            Divider().background(JarvisTheme.hairline)
             messagesArea
-
-            Divider()
-
-            // Input bar
+            Divider().background(JarvisTheme.hairline)
             inputBar
         }
         .frame(
@@ -31,36 +26,44 @@ struct ChatView: View {
             minHeight: Constants.ChatHUD.minHeight
         )
         .onAppear {
-            inputFocused = true
+            // Small delay so the panel has finished becoming key before we grab focus.
+            DispatchQueue.main.async { inputFocused = true }
         }
     }
 
     // MARK: - Header
 
     private var chatHeader: some View {
-        HStack {
-            Image(systemName: "waveform.circle.fill")
-                .foregroundStyle(JarvisTheme.neonCyan)
-                .font(.title3)
-                .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 4)
-            Text("Jarvis Chat")
-                .font(.headline)
-                .foregroundStyle(JarvisTheme.brightCyan)
+        HStack(spacing: 10) {
+            Circle()
+                .fill(JarvisTheme.accent)
+                .frame(width: 8, height: 8)
+            Text("Jarvis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(JarvisTheme.textPrimary)
             Spacer()
-            Button(action: onPin) {
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundStyle(isPinned ? JarvisTheme.neonCyan : JarvisTheme.neonCyan.opacity(0.55))
-            }
-            .buttonStyle(.borderless)
-            .help(isPinned ? "Unpin" : "Pin")
-            Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
-            }
-            .buttonStyle(.borderless)
+            headerIconButton(system: isPinned ? "pin.fill" : "pin",
+                             active: isPinned, help: isPinned ? "Unpin" : "Pin",
+                             action: onPin)
+            headerIconButton(system: "xmark", help: "Luk", action: onClose)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func headerIconButton(system: String, active: Bool = false, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: system)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(active ? JarvisTheme.accent : JarvisTheme.textSecondary)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(JarvisTheme.surfaceElevated)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     // MARK: - Messages
@@ -68,7 +71,7 @@ struct ChatView: View {
     private var messagesArea: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 10) {
                     if chatSession.messages.isEmpty {
                         emptyState
                     }
@@ -77,8 +80,8 @@ struct ChatView: View {
                             .id(message.id)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
             .onChange(of: chatSession.messages.count) {
                 if let last = chatSession.messages.last {
@@ -96,60 +99,70 @@ struct ChatView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            HALEyeView(progress: 0, size: 72, levelMonitor: nil)
-                .padding(.bottom, 4)
-            Text("Start en samtale med Jarvis")
-                .font(.subheadline)
-                .foregroundStyle(JarvisTheme.brightCyan.opacity(0.9))
+        VStack(spacing: 10) {
+            Circle()
+                .fill(JarvisTheme.accent.opacity(0.85))
+                .frame(width: 14, height: 14)
+                .shadow(color: JarvisTheme.accent.opacity(0.6), radius: 4)
+                .padding(.top, 30)
+            Text("What can I help you with today?")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(JarvisTheme.textPrimary)
             Text("Skriv en besked eller hold mic-knappen")
-                .font(.caption)
-                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                .font(.system(size: 12))
+                .foregroundStyle(JarvisTheme.textMuted)
         }
-        .padding(.vertical, 40)
+        .padding(.vertical, 30)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             if let onVoice {
                 Button(action: onVoice) {
                     Image(systemName: "mic.fill")
-                        .font(.body)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.75))
+                        .font(.system(size: 14))
+                        .foregroundStyle(JarvisTheme.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(JarvisTheme.surfaceElevated)
+                        )
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help("Tal til Jarvis")
             }
 
-            TextField("Skriv en besked...", text: $inputText)
+            TextField("Skriv en besked…", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .foregroundStyle(.white)
+                .font(.system(size: 14))
+                .foregroundStyle(JarvisTheme.textPrimary)
+                .lineLimit(1...4)
                 .focused($inputFocused)
                 .onSubmit { sendMessage() }
 
             Button(action: sendMessage) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(
-                        inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? JarvisTheme.neonCyan.opacity(0.35)
-                            : JarvisTheme.neonCyan
-                    )
-                    .shadow(
-                        color: inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? .clear
-                            : JarvisTheme.neonCyan.opacity(0.6),
-                        radius: 4
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(
+                                inputText.trimmingCharacters(in: .whitespaces).isEmpty
+                                    ? JarvisTheme.surfaceElevated
+                                    : JarvisTheme.accent
+                            )
                     )
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || chatSession.isStreaming)
             .keyboardShortcut(.return, modifiers: [])
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     private func sendMessage() {

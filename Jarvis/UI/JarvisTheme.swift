@@ -1,81 +1,78 @@
 import SwiftUI
 
-/// HAL 9000 / 2001: A Space Odyssey palette. v5.0.0-alpha.4 replaces the cyan
-/// Iron Man theme with HAL's distinctive red-lens + brass aesthetic.
-/// Legacy names (`neonCyan`, `brightCyan`, etc.) are preserved as aliases so
-/// existing view code compiles without churn — they now map to the HAL equivalents.
+/// Claude-desktop-inspired palette. v5.0.0-alpha.5 retired the HAL 9000 red
+/// theme in favour of a calmer dark-neutral surface with a warm amber accent
+/// (Anthropic's signature Claude orange).
+///
+/// Legacy names from v4 (`neonCyan`, `brightCyan`, …) are kept as aliases so
+/// existing view code compiles without changes; they now map to the Claude
+/// equivalents.
 enum JarvisTheme {
-    // MARK: - Core HAL palette
-    /// The iconic HAL lens glow. `#FF1744` — deep saturated red with enough
-    /// luminance to read as "alive" on a dark background.
-    static let halRed        = Color(red: 1.00, green: 0.09, blue: 0.27)
-    /// Brighter flare red for active / peak states.
-    static let halFlare      = Color(red: 1.00, green: 0.35, blue: 0.45)
-    /// Deep crimson fade — used inside the lens aperture when it's "at rest".
-    static let halDeep       = Color(red: 0.55, green: 0.00, blue: 0.05)
-    /// Warm amber/brass for decorative rings, ala the brass trim around
-    /// HAL's face plate.
-    static let halBrass      = Color(red: 0.86, green: 0.65, blue: 0.28)
-    /// Warning amber used in lieu of system yellow.
-    static let halWarning    = Color(red: 1.00, green: 0.73, blue: 0.22)
+    // MARK: - Surfaces (dark neutrals, not pitch black)
+    /// Primary HUD background. Slightly lighter than true black so it reads as
+    /// a surface rather than a void.
+    static let surfaceBase     = Color(red: 0.094, green: 0.094, blue: 0.102)   // #18181A
+    /// Raised card / elevated element.
+    static let surfaceElevated = Color(red: 0.133, green: 0.133, blue: 0.141)   // #222224
+    /// Subtle hairline border colour.
+    static let hairline        = Color.white.opacity(0.08)
 
-    // MARK: - Surfaces
-    /// Near-black base for the HUD interior. Darker than `.black` would be
-    /// because macOS HUDs sit on top of translucency.
-    static let surfaceBase   = Color(red: 0.027, green: 0.024, blue: 0.031)
-    /// Slightly lighter surface for nested cards.
-    static let surfaceElevated = Color(red: 0.059, green: 0.047, blue: 0.055)
+    // MARK: - Accent (warm amber — "Claude orange")
+    /// Primary action / highlight colour.
+    static let accent          = Color(red: 0.851, green: 0.459, blue: 0.341)   // #D9755A
+    /// Brighter variant for hover / emphasis.
+    static let accentBright    = Color(red: 0.937, green: 0.553, blue: 0.404)   // #EF8C67
+    /// Dimmer variant for secondary accents.
+    static let accentMuted     = Color(red: 0.616, green: 0.306, blue: 0.200)   // #9D4E33
 
-    // MARK: - Legacy aliases (keep v4 view code compiling)
-    static var neonCyan: Color     { halRed }
-    static var brightCyan: Color   { halFlare }
-    static var deepCyan: Color     { halDeep }
-    static var criticalGlow: Color { halRed }
-    static var warningGlow: Color  { halWarning }
-    static var successGlow: Color  { halBrass }
+    // MARK: - Text
+    static let textPrimary     = Color(red: 0.933, green: 0.933, blue: 0.929)   // #EEEEED
+    static let textSecondary   = Color(red: 0.635, green: 0.635, blue: 0.627)   // #A2A2A0
+    static let textMuted       = Color(red: 0.435, green: 0.435, blue: 0.427)   // #6F6F6D
+
+    // MARK: - Semantic
+    static let successGlow     = Color(red: 0.427, green: 0.741, blue: 0.510)   // #6DBD82
+    static let warningGlow     = Color(red: 0.976, green: 0.706, blue: 0.341)   // #F9B457
+    static let criticalGlow    = Color(red: 0.906, green: 0.396, blue: 0.365)   // #E7655D
+
+    // MARK: - Legacy v4 aliases (kept so older views don't need rewrites)
+    static var neonCyan: Color    { accent }
+    static var brightCyan: Color  { accentBright }
+    static var deepCyan: Color    { accentMuted }
+    static var halRed: Color      { accent }
+    static var halFlare: Color    { accentBright }
+    static var halDeep: Color     { accentMuted }
+    static var halBrass: Color    { accent }
+    static var halWarning: Color  { warningGlow }
 
     // MARK: - Gradients
-    static let deepSpaceGradient = LinearGradient(
+    static let surfaceGradient = LinearGradient(
         colors: [surfaceBase, surfaceElevated],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+    /// Legacy alias (was deepSpaceGradient).
+    static var deepSpaceGradient: LinearGradient { surfaceGradient }
 
-    /// Radial gradient for the HAL lens core: bright white-hot centre,
-    /// ramping to saturated red, fading to black.
+    /// Subtle border glow when the HUD is active.
+    static let borderGradient = LinearGradient(
+        colors: [accent.opacity(0.35), hairline],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    /// Used by the pulsing recording indicator dot.
     static let coreGradient = RadialGradient(
-        colors: [
-            Color(red: 1.0, green: 0.85, blue: 0.80),
-            halFlare,
-            halRed,
-            halDeep.opacity(0)
-        ],
+        colors: [accentBright, accent, accent.opacity(0)],
         center: .center,
         startRadius: 0,
-        endRadius: 22
+        endRadius: 12
     )
 
-    /// Brass border with a subtle inner red echo.
-    static let borderGradient = LinearGradient(
-        colors: [halBrass.opacity(0.65), halDeep.opacity(0.3)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    // MARK: - Chat bubble
+    /// Chat user-message bubble.
     static let userBubble = LinearGradient(
-        colors: [halRed.opacity(0.85), halDeep.opacity(0.5)],
+        colors: [accent.opacity(0.85), accentMuted.opacity(0.7)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-}
-
-// MARK: - Monospaced computer-terminal font helper
-
-extension Font {
-    /// The HAL-era computer-readout font. Used for countdown / mode label so the
-    /// HUD reads like a 1960s control panel.
-    static func halTerminal(size: CGFloat, weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
-    }
 }

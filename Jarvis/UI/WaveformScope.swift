@@ -43,24 +43,24 @@ struct WaveformScope: View {
                 envelope,
                 with: .linearGradient(
                     Gradient(colors: [
-                        JarvisTheme.halFlare.opacity(0.7),
-                        JarvisTheme.halRed.opacity(0.35),
-                        JarvisTheme.halDeep.opacity(0.15)
+                        JarvisTheme.accentBright.opacity(0.55),
+                        JarvisTheme.accent.opacity(0.28),
+                        JarvisTheme.accentMuted.opacity(0.1)
                     ]),
                     startPoint: .zero,
                     endPoint: CGPoint(x: 0, y: size.height)
                 )
             )
 
-            // Crisp red edge line on top + bottom for definition.
-            context.stroke(top, with: .color(JarvisTheme.halFlare), lineWidth: 1.2)
-            context.stroke(bottom, with: .color(JarvisTheme.halRed.opacity(0.8)), lineWidth: 1.2)
+            // Crisp amber edge line on top + bottom for definition.
+            context.stroke(top, with: .color(JarvisTheme.accentBright), lineWidth: 1)
+            context.stroke(bottom, with: .color(JarvisTheme.accent.opacity(0.75)), lineWidth: 1)
 
-            // Center reference — dimmer, brass-tinted
+            // Center reference — very dim neutral so it doesn't steal focus.
             var centerLine = Path()
             centerLine.move(to: CGPoint(x: 0, y: midY))
             centerLine.addLine(to: CGPoint(x: size.width, y: midY))
-            context.stroke(centerLine, with: .color(JarvisTheme.halBrass.opacity(0.2)), lineWidth: 0.5)
+            context.stroke(centerLine, with: .color(Color.white.opacity(0.06)), lineWidth: 0.5)
         }
         .frame(height: height)
     }

@@ -200,9 +200,9 @@ class HUDWindowController {
 
         let hostingController = NSHostingController(rootView: contentView)
 
-        let panel = NSPanel(contentViewController: hostingController)
-        // Borderless + resizable lets the Jarvis cyan background fill the whole panel
-        // with no competing system titlebar. The ChatView's header carries the X/Pin buttons.
+        // Custom subclass: canBecomeKey=true so the TextField can actually receive
+        // keystrokes (fixes the v4.x "can't type in chat" bug).
+        let panel = JarvisChatPanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
         panel.level = .floating
         panel.isOpaque = false

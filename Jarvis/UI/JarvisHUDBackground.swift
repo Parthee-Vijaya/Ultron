@@ -1,38 +1,27 @@
 import SwiftUI
 
-/// Iron Man–style HUD backdrop: deep-space gradient + cyan glow + cyan border + corner reticle.
-/// Replaces the generic `.regularMaterial` used pre-v4.0.
+/// Claude-desktop-inspired HUD backdrop. v5.0.0-alpha.5 replaced the
+/// gradient + neon-glow stack from v4 with a flat dark-neutral surface and a
+/// single hairline border, matching Anthropic's desktop app aesthetic.
 struct JarvisHUDBackground: ViewModifier {
     var cornerRadius: CGFloat = Constants.HUD.cornerRadius
-    var showReticle: Bool = true
+    /// Retained for API compatibility — reticle corners are gone in α.5.
+    var showReticle: Bool = false
 
     func body(content: Content) -> some View {
         content
-            .background {
-                ZStack {
-                    JarvisTheme.deepSpaceGradient
-
-                    // Subtle radial cyan bloom in the upper-left, evokes arc-reactor spill.
-                    RadialGradient(
-                        colors: [JarvisTheme.neonCyan.opacity(0.10), .clear],
-                        center: .topLeading,
-                        startRadius: 0,
-                        endRadius: 260
-                    )
-                }
-            }
+            .background(JarvisTheme.surfaceBase)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
+            .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(JarvisTheme.borderGradient, lineWidth: 1)
-            }
-            .shadow(color: JarvisTheme.neonCyan.opacity(0.35), radius: 16, y: 0)
-            .shadow(color: .black.opacity(0.55), radius: Constants.HUD.outerShadowRadius, y: Constants.HUD.outerShadowY)
+                    .stroke(JarvisTheme.hairline, lineWidth: 0.75)
+            )
+            .shadow(color: .black.opacity(0.45), radius: 20, y: 8)
     }
 }
 
 extension View {
-    func jarvisHUDBackground(cornerRadius: CGFloat = Constants.HUD.cornerRadius, showReticle: Bool = true) -> some View {
+    func jarvisHUDBackground(cornerRadius: CGFloat = Constants.HUD.cornerRadius, showReticle: Bool = false) -> some View {
         modifier(JarvisHUDBackground(cornerRadius: cornerRadius, showReticle: showReticle))
     }
 }

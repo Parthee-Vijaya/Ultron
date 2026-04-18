@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// HUD content — Claude-desktop inspired layout for v5.0.0-alpha.5.
+///
+/// Flat dark surface, amber accent, compact header row, generous body area,
+/// prominent waveform at the bottom during recording. No glow/bloom effects,
+/// system typography throughout.
 struct HUDContentView: View {
     let state: HUDState
     let audioLevel: AudioLevelMonitor
@@ -31,7 +36,7 @@ struct HUDContentView: View {
                         minHeight: Constants.ChatHUD.minHeight,
                         maxHeight: .infinity
                     )
-                    .jarvisHUDBackground(showReticle: false)
+                    .jarvisHUDBackground()
             } else {
                 VStack(spacing: 0) {
                     phaseContent
@@ -44,9 +49,9 @@ struct HUDContentView: View {
         .scaleEffect(appeared ? 1 : Constants.Animation.appearScaleFrom)
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : Constants.Animation.appearOffsetFrom)
-        .animation(.spring(response: 0.4, dampingFraction: 0.82), value: state.currentPhase)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: state.currentPhase)
         .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
                 appeared = true
             }
         }
@@ -79,8 +84,6 @@ struct HUDContentView: View {
                 )
             }
         case .uptodate, .infoMode:
-            // Uptodate + Info both get dedicated panels in HUDWindowController; this
-            // switch case exists only for phase-switch completeness.
             EmptyView()
         }
     }
@@ -89,99 +92,69 @@ struct HUDContentView: View {
 
     private func recordingView(elapsed: TimeInterval) -> some View {
         let remaining = max(0, Constants.maxRecordingDuration - elapsed)
-
-        return VStack(spacing: 10) {
-            // Top status row: mode badge + remaining countdown
-            HStack(spacing: 8) {
-                modeBadge
-                Spacer()
-                Label(formatTime(remaining), systemImage: "timer")
-                    .font(.halTerminal(size: 11, weight: .medium))
-                    .foregroundStyle(JarvisTheme.halBrass.opacity(0.9))
-            }
-
-            HALEyeView(
-                progress: min(elapsed / Constants.maxRecordingDuration, 1.0),
-                size: 130,
-                levelMonitor: audioLevel
-            )
-            .padding(.top, 4)
-
-            // Live transcription — only shown once there's something to show so the
-            // HUD doesn't display an empty placeholder line on every press.
-            if !speechService.transcript.isEmpty {
-                Text(speechService.transcript)
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.95))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .frame(maxWidth: .infinity)
-                    .transition(.opacity)
-            } else {
-                Text("Lytter…")
-                    .font(.callout)
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.45))
-            }
-
-            // Silence hint — fades in/out when the mic has been quiet >2 s
-            if audioLevel.isSilent {
-                Label("Slip for at sende", systemImage: "hand.tap.fill")
-                    .font(.caption)
-                    .foregroundStyle(JarvisTheme.brightCyan)
-                    .shadow(color: JarvisTheme.brightCyan.opacity(0.7), radius: 4)
-                    .transition(.opacity.combined(with: .scale))
-            }
-
-            // Big, prominent oscilloscope strip — the voice *is* the visual here.
-            WaveformScope(buffer: waveform, height: 56)
-                .padding(.horizontal, 2)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(JarvisTheme.halRed.opacity(0.25), lineWidth: 0.5)
+        return VStack(alignment: .leading, spacing: 10) {
+            // Header: indicator + mode name + countdown
+            HStack(spacing: 10) {
+                HALEyeView(
+                    progress: min(elapsed / Constants.maxRecordingDuration, 1.0),
+                    size: 18,
+                    levelMonitor: audioLevel
                 )
-        }
-        .animation(.easeInOut(duration: 0.25), value: audioLevel.isSilent)
-        .animation(.easeInOut(duration: 0.2), value: speechService.transcript.isEmpty)
-    }
+                Text(activeModeName.isEmpty ? "Jarvis" : activeModeName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textPrimary)
+                Spacer()
+                Text(formatTime(remaining))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+            }
 
-    private var modeBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(JarvisTheme.halRed)
-                .frame(width: 6, height: 6)
-                .shadow(color: JarvisTheme.halRed.opacity(0.7), radius: 2)
-            Text((activeModeName.isEmpty ? "JARVIS" : activeModeName).uppercased())
-                .font(.halTerminal(size: 10, weight: .semibold))
-                .tracking(1.2)
+            // Live transcription area — grows to fit 3 lines
+            ZStack(alignment: .topLeading) {
+                if speechService.transcript.isEmpty {
+                    Text(audioLevel.isSilent ? "Slip for at sende" : "Lytter…")
+                        .font(.system(size: 14))
+                        .foregroundStyle(
+                            audioLevel.isSilent ? JarvisTheme.accent : JarvisTheme.textSecondary
+                        )
+                        .transition(.opacity)
+                } else {
+                    Text(speechService.transcript)
+                        .font(.system(size: 14))
+                        .foregroundStyle(JarvisTheme.textPrimary)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                }
+            }
+            .frame(minHeight: 42, alignment: .topLeading)
+
+            // Prominent waveform — the visual emphasis of the recording HUD
+            WaveformScope(buffer: waveform, height: 72)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background {
-            Capsule()
-                .fill(Color.black.opacity(0.6))
-                .overlay(Capsule().stroke(JarvisTheme.halBrass.opacity(0.55), lineWidth: 0.75))
-        }
-        .foregroundStyle(JarvisTheme.halFlare)
+        .animation(.easeInOut(duration: 0.2), value: audioLevel.isSilent)
+        .animation(.easeInOut(duration: 0.2), value: speechService.transcript.isEmpty)
     }
 
     // MARK: - Processing
 
     private var processingView: some View {
-        VStack(spacing: 14) {
-            HStack {
-                headerIcon("cpu", color: JarvisTheme.warningGlow)
-                Text("Behandler...").font(.headline).foregroundStyle(JarvisTheme.brightCyan)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(JarvisTheme.accent)
+                Text("Behandler…")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
             }
-            HALEyeView(progress: 0, size: 90, levelMonitor: nil)
-                .padding(.vertical, 6)
-            // Show the last transcription so the user can verify what was sent.
             if !speechService.transcript.isEmpty {
-                Text("\u{201E}\(speechService.transcript)\u{201C}")
-                    .font(.caption)
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                Text(speechService.transcript)
+                    .font(.system(size: 13))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -189,45 +162,44 @@ struct HUDContentView: View {
     // MARK: - Result
 
     private func resultView(text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                headerIcon("waveform.circle.fill", color: JarvisTheme.neonCyan)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(JarvisTheme.accent)
+                    .frame(width: 8, height: 8)
                 Text("Jarvis")
-                    .font(.headline)
-                    .foregroundStyle(JarvisTheme.brightCyan)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
-                hudControlButton(system: state.isPinned ? "pin.fill" : "pin",
-                                 tint: state.isPinned ? JarvisTheme.neonCyan : JarvisTheme.neonCyan.opacity(0.55),
-                                 help: state.isPinned ? "Unpin" : "Pin") { onPin?() }
-                hudControlButton(system: "speaker.wave.2.fill",
-                                 tint: JarvisTheme.neonCyan.opacity(0.7),
-                                 help: "Læs op") { onSpeak?(text) }
-                hudControlButton(system: "xmark.circle.fill",
-                                 tint: JarvisTheme.neonCyan.opacity(0.55),
-                                 help: "Luk", action: onClose)
+                iconButton(system: state.isPinned ? "pin.fill" : "pin",
+                           active: state.isPinned, help: state.isPinned ? "Unpin" : "Pin") {
+                    onPin?()
+                }
+                iconButton(system: "speaker.wave.2.fill", help: "Læs op") {
+                    onSpeak?(text)
+                }
+                iconButton(system: "xmark", help: "Luk", action: onClose)
             }
             Rectangle()
-                .fill(JarvisTheme.neonCyan.opacity(0.25))
+                .fill(JarvisTheme.hairline)
                 .frame(height: 1)
             ScrollView {
-                MarkdownTextView(text, foregroundColor: .white.opacity(0.95))
+                MarkdownTextView(text, foregroundColor: JarvisTheme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 200)
+            .frame(maxHeight: 240)
         }
     }
 
     // MARK: - Confirmation
 
     private func confirmationView(message: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
                 .foregroundStyle(JarvisTheme.successGlow)
-                .shadow(color: JarvisTheme.brightCyan.opacity(0.6), radius: 4)
             Text(message)
-                .font(.body)
-                .foregroundStyle(.white.opacity(0.95))
+                .font(.system(size: 13))
+                .foregroundStyle(JarvisTheme.textPrimary)
             Spacer()
         }
     }
@@ -236,20 +208,19 @@ struct HUDContentView: View {
 
     private func errorView(message: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.title2)
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(JarvisTheme.criticalGlow)
-                    .shadow(color: JarvisTheme.criticalGlow.opacity(0.5), radius: 4)
-                Text("Fejl").font(.headline).foregroundStyle(JarvisTheme.criticalGlow)
+                Text("Fejl")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
-                hudControlButton(system: "xmark.circle.fill",
-                                 tint: JarvisTheme.neonCyan.opacity(0.5),
-                                 help: "Luk", action: onClose)
+                iconButton(system: "xmark", help: "Luk", action: onClose)
             }
             Text(message)
-                .font(.body)
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: 13))
+                .foregroundStyle(JarvisTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -257,24 +228,23 @@ struct HUDContentView: View {
 
     private func permissionErrorView(permission: String, instructions: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "lock.shield.fill")
-                    .font(.title2)
+            HStack(spacing: 10) {
+                Image(systemName: "lock.fill")
                     .foregroundStyle(JarvisTheme.warningGlow)
-                    .shadow(color: JarvisTheme.warningGlow.opacity(0.5), radius: 4)
-                Text("\(permission) kræves").font(.headline).foregroundStyle(JarvisTheme.brightCyan)
+                Text("\(permission) kræves")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
-                hudControlButton(system: "xmark.circle.fill",
-                                 tint: JarvisTheme.neonCyan.opacity(0.5),
-                                 help: "Luk", action: onClose)
+                iconButton(system: "xmark", help: "Luk", action: onClose)
             }
             Text(instructions)
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: 13))
+                .foregroundStyle(JarvisTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             if let action = onPermissionAction {
                 Button("Åbn Indstillinger") { action() }
                     .buttonStyle(.borderedProminent)
-                    .tint(JarvisTheme.neonCyan)
+                    .tint(JarvisTheme.accent)
                     .controlSize(.small)
             }
         }
@@ -282,25 +252,23 @@ struct HUDContentView: View {
 
     // MARK: - Helpers
 
-    private func headerIcon(_ name: String, color: Color) -> some View {
-        Image(systemName: name)
-            .foregroundStyle(color)
-            .font(.title3)
-            .shadow(color: color.opacity(0.6), radius: 3)
-    }
-
-    private func hudControlButton(system: String, tint: Color, help: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(system: String, active: Bool = false, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: system).foregroundStyle(tint)
+            Image(systemName: system)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(active ? JarvisTheme.accent : JarvisTheme.textSecondary)
+                .frame(width: 20, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(JarvisTheme.surfaceElevated)
+                )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help(help)
     }
 
     private func formatTime(_ time: TimeInterval) -> String {
         let seconds = Int(time)
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d", minutes, secs)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }

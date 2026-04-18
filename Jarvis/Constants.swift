@@ -3,7 +3,7 @@ import AVFoundation
 enum Constants {
     // MARK: - App
     static let appName = "Jarvis"
-    static let appVersion = "5.0.0-alpha.4"
+    static let appVersion = "5.0.0-alpha.5"
     static let bundleID = "pavi.Jarvis"
 
     // MARK: - Spacing scale (use these instead of magic numbers)
