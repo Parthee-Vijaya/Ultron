@@ -38,6 +38,8 @@ final class AgentToolRegistry {
         register(RenameFileTool.tool)
         register(DeleteFileTool.tool)
         register(CreateDirectoryTool.tool)
+        // v1.1.7: read-only shell execution via a conservative whitelist.
+        register(RunShellTool.tool)
     }
 
     func register(_ tool: AgentTool) {

@@ -6,7 +6,7 @@ enum Constants {
     /// breaking Keychain-service IDs and log paths.
     static let displayName = "J.A.R.V.I.S"
     static let appName = "Jarvis"
-    static let appVersion = "1.1.6-alpha.1"
+    static let appVersion = "1.1.7-alpha.1"
     static let bundleID = "pavi.Jarvis"
 
     // MARK: - Spacing scale (use these instead of magic numbers)
@@ -108,6 +108,9 @@ enum Constants {
         static let claudeWeeklyLimitTokens = "claudeWeeklyLimitTokens"
         static let agentClaudeModel = "agentClaudeModel"
         static let agentWorkspaceRoots = "agentWorkspaceRoots"
+        /// v1.1.7: newline-separated list of additional program names the user
+        /// trusts for `run_shell` beyond the built-in defaults.
+        static let shellCommandWhitelist = "shellCommandWhitelist"
     }
 
     // MARK: - Claude Code defaults

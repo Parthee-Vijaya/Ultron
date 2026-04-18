@@ -72,7 +72,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupWakeWord()
             setupVoiceCommands()
             checkFirstLaunch()
+            // v1.1.7: spawn any MCP servers the user declared in ~/.jarvis/mcp.json
+            // and register their tools with the shared agent registry. Runs in
+            // the background — we don't block app launch if a server is slow.
+            Task { await MCPRegistry.shared.bootstrap() }
             LoggingService.shared.log("Jarvis v\(Constants.appVersion) started")
+        }
+    }
+
+    nonisolated func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            MCPRegistry.shared.shutdown()
         }
     }
 
