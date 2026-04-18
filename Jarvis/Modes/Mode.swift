@@ -38,6 +38,13 @@ struct Mode: Identifiable, Codable, Equatable {
     /// Only honoured on non-paste output types (Q&A, Vision, Chat) — dictation-style
     /// rewrite modes are better left un-grounded.
     var webSearch: Bool
+    /// Which upstream provider this mode talks to. Defaults to Gemini; agent
+    /// modes use Anthropic. Added in v5.0.0-beta.1 — older JSON decodes as
+    /// `.gemini`.
+    var provider: AIProviderType
+    /// If true, the mode routes through `AgentService` with the file-op tool
+    /// registry enabled. Only honoured on Anthropic-provider modes.
+    var agentTools: Bool
 
     init(
         id: UUID,
@@ -47,7 +54,9 @@ struct Mode: Identifiable, Codable, Equatable {
         outputType: OutputType,
         maxTokens: Int,
         isBuiltIn: Bool,
-        webSearch: Bool = false
+        webSearch: Bool = false,
+        provider: AIProviderType = .gemini,
+        agentTools: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -57,11 +66,13 @@ struct Mode: Identifiable, Codable, Equatable {
         self.maxTokens = maxTokens
         self.isBuiltIn = isBuiltIn
         self.webSearch = webSearch
+        self.provider = provider
+        self.agentTools = agentTools
     }
 
     // Custom Codable so older JSON files (v3.0 custom modes without `webSearch`) decode cleanly.
     private enum CodingKeys: String, CodingKey {
-        case id, name, systemPrompt, model, outputType, maxTokens, isBuiltIn, webSearch
+        case id, name, systemPrompt, model, outputType, maxTokens, isBuiltIn, webSearch, provider, agentTools
     }
 
     init(from decoder: Decoder) throws {
@@ -74,6 +85,22 @@ struct Mode: Identifiable, Codable, Equatable {
         maxTokens = try c.decode(Int.self, forKey: .maxTokens)
         isBuiltIn = try c.decode(Bool.self, forKey: .isBuiltIn)
         webSearch = try c.decodeIfPresent(Bool.self, forKey: .webSearch) ?? false
+        provider = try c.decodeIfPresent(AIProviderType.self, forKey: .provider) ?? .gemini
+        agentTools = try c.decodeIfPresent(Bool.self, forKey: .agentTools) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(systemPrompt, forKey: .systemPrompt)
+        try c.encode(model, forKey: .model)
+        try c.encode(outputType, forKey: .outputType)
+        try c.encode(maxTokens, forKey: .maxTokens)
+        try c.encode(isBuiltIn, forKey: .isBuiltIn)
+        try c.encode(webSearch, forKey: .webSearch)
+        try c.encode(provider, forKey: .provider)
+        try c.encode(agentTools, forKey: .agentTools)
     }
 
     static func == (lhs: Mode, rhs: Mode) -> Bool {

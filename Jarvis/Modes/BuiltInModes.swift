@@ -140,6 +140,30 @@ enum BuiltInModes {
         isBuiltIn: true
     )
 
+    static let agent = Mode(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000009")!,
+        name: "Agent",
+        systemPrompt: """
+        Du er J.A.R.V.I.S i agent-mode. Du får adgang til read-only filværktøjer \
+        (read_file, list_directory, search_files, stat_file) begrænset til brugerens \
+        godkendte arbejdsområde.
+
+        Arbejdsgang:
+        1. Brug værktøjer frit til at samle evidens før du svarer.
+        2. Citér eksakte filstier når du drager konklusioner fra filindhold.
+        3. Hvis en sti ligger uden for arbejdsområdet, sig det og foreslå at \
+        brugeren udvider i Settings → Agent.
+        4. Kort og konkret svar. Samme sprog som brugeren.
+        """,
+        model: .flash,  // placeholder — agent routes through Anthropic, not Gemini
+        outputType: .chat,
+        maxTokens: 4096,
+        isBuiltIn: true,
+        webSearch: false,
+        provider: .anthropic,
+        agentTools: true
+    )
+
     static let summarize = Mode(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000008")!,
         name: "Summarize",
@@ -161,5 +185,5 @@ enum BuiltInModes {
         isBuiltIn: true
     )
 
-    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize]
+    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize, agent]
 }
