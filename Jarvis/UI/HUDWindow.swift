@@ -117,6 +117,22 @@ class HUDWindowController {
             return
         }
 
+        // Honour the user's hudStyle preference. `auto` picks notch when the screen has one.
+        let stylePref = HUDStylePreference(rawValue: UserDefaults.standard.string(forKey: Constants.Defaults.hudStyle) ?? "") ?? .auto
+        switch stylePref.resolved() {
+        case .notch:
+            if let metrics = NotchDetector.currentMetrics() {
+                presentNotchPanel(metrics: metrics)
+                return
+            }
+            // Fall through to corner if the user forced notch but has no notched screen.
+            fallthrough
+        case .corner:
+            presentCornerPanel()
+        }
+    }
+
+    private func presentCornerPanel() {
         let contentView = HUDContentView(
             state: hudState,
             audioLevel: audioLevel,
@@ -139,9 +155,9 @@ class HUDWindowController {
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = false // SwiftUI handles shadows
+        panel.hasShadow = false
         panel.isMovableByWindowBackground = true
-        panel.hidesOnDeactivate = false  // Critical: menu bar app is never "active"
+        panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         if let screen = NSScreen.main {
@@ -153,6 +169,48 @@ class HUDWindowController {
                 display: true
             )
         }
+
+        panel.orderFrontRegardless()
+        self.panel = panel
+        hudState.isVisible = true
+    }
+
+    private func presentNotchPanel(metrics: NotchDetector.NotchMetrics) {
+        let contentView = NotchHUDContentView(
+            state: hudState,
+            audioLevel: audioLevel,
+            waveform: waveform,
+            speechService: speechService,
+            activeModeName: activeModeName,
+            onClose: { [weak self] in self?.close() },
+            onSpeak: { [weak self] text in self?.onSpeakRequested?(text) },
+            onPermissionAction: { [weak self] in self?.onPermissionAction?() }
+        )
+
+        let hostingController = NSHostingController(rootView: contentView)
+
+        let panel = NSPanel(contentViewController: hostingController)
+        // statusBar-level + 1 keeps the pill above the system menu bar so it visually
+        // extends the notch. .borderless + clear background lets the SwiftUI shape show through.
+        panel.styleMask = [.borderless, .nonactivatingPanel]
+        panel.level = NSWindow.Level(Int(CGWindowLevelForKey(.statusWindow)) + 1)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.isMovableByWindowBackground = false  // pinned to the notch
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.ignoresMouseEvents = false
+
+        let w = Constants.NotchHUD.expandedWidth
+        let h = Constants.NotchHUD.maxHeight
+        // In AppKit's flipped screen coords, screen.frame.maxY is the TOP of the screen.
+        // We position the panel so its top edge sits just under (slightly over) the notch
+        // bottom so the pill visually connects to the notch cutout.
+        let topY = metrics.notchBottomY + Constants.NotchHUD.notchOverlap
+        let x = metrics.notchCenterX - w / 2
+        let y = topY - h
+        panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
 
         panel.orderFrontRegardless()
         self.panel = panel

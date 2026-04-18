@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showingNewMode = false
     @AppStorage("ttsEnabled") private var ttsEnabled = false
     @AppStorage(Constants.Defaults.wakeWordEnabled) private var wakeWordEnabled = false
+    @AppStorage(Constants.Defaults.hudStyle) private var hudStyleRaw: String = HUDStylePreference.auto.rawValue
     @State private var porcupineKey = ""
     @State private var wakeWordStatus: String?
 
@@ -254,6 +255,7 @@ struct SettingsView: View {
                 Text("When enabled, Q&A and Vision responses will be read aloud.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            hudStyleSection
             GroupBox {
                 HStack {
                     Image(systemName: "command").foregroundStyle(.secondary)
@@ -267,6 +269,28 @@ struct SettingsView: View {
             Spacer()
         }
         .padding()
+    }
+
+    private var hudStyleSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("HUD-stil").fontWeight(.medium)
+                    Spacer()
+                    Picker("", selection: $hudStyleRaw) {
+                        ForEach(HUDStylePreference.allCases) { style in
+                            Text(style.displayName).tag(style.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                    .labelsHidden()
+                }
+                Text("**Auto** vælger notch-stil på MacBooks med notch, ellers hjørne øverst til højre. Ændring træder i kraft næste gang HUD åbnes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var wakeWordSection: some View {

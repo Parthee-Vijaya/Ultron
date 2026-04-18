@@ -80,6 +80,21 @@ enum Constants {
         static let chatFrameW = "chatFrameW"
         static let chatFrameH = "chatFrameH"
         static let wakeWordEnabled = "wakeWordEnabled"
+        static let hudStyle = "hudStyle"
+    }
+
+    // MARK: - Notch HUD dimensions
+    enum NotchHUD {
+        /// Width of the pill when showing processing (matches notch width).
+        static let collapsedWidth: CGFloat = 240
+        /// Width when showing recording / result content.
+        static let expandedWidth: CGFloat = 460
+        /// Max height when result text is long.
+        static let maxHeight: CGFloat = 320
+        /// Corner radius on the bottom of the pill — pairs visually with the notch cutout.
+        static let cornerRadius: CGFloat = 22
+        /// Overlap into the notch (pixels we push above notch bottom) to hide the seam.
+        static let notchOverlap: CGFloat = 6
     }
 
     // MARK: - Gemini Models
