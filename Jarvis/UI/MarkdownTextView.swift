@@ -99,8 +99,20 @@ struct MarkdownTextView: View {
     }
 
     private func codeBlockView(language: String, content: String) -> some View {
+        CodeBlockView(language: language, content: content)
+    }
+}
+
+/// v1.1.6: extracted so the copy button can track per-block "Copied!" state
+/// without the parent MarkdownTextView having to hold a dictionary.
+private struct CodeBlockView: View {
+    let language: String
+    let content: String
+
+    @State private var copied = false
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header with language and copy button
             HStack {
                 if !language.isEmpty {
                     Text(language)
@@ -108,16 +120,13 @@ struct MarkdownTextView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action: {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(content, forType: .string)
-                }) {
+                Button(action: copy) {
                     HStack(spacing: 4) {
-                        Image(systemName: "doc.on.doc")
-                        Text("Copy")
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        Text(copied ? "Copied!" : "Copy")
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(copied ? JarvisTheme.accent : .secondary)
                 }
                 .buttonStyle(.borderless)
             }
@@ -141,5 +150,16 @@ struct MarkdownTextView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.quaternary, lineWidth: 1)
         )
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(content, forType: .string)
+        withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+        // Clear the visual after 1.5 s — short enough to not get stuck, long
+        // enough for the user to confirm the copy happened.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeInOut(duration: 0.2)) { copied = false }
+        }
     }
 }

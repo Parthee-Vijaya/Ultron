@@ -357,6 +357,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeysItem.target = self
         statusMenu.addItem(hotkeysItem)
 
+        let cheatSheetItem = NSMenuItem(title: "Hotkeys & kommandoer…", action: #selector(openCheatSheet), keyEquivalent: "?")
+        cheatSheetItem.target = self
+        cheatSheetItem.keyEquivalentModifierMask = [.command]
+        statusMenu.addItem(cheatSheetItem)
+
         let settingsItem = NSMenuItem(title: "Indstillinger…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         statusMenu.addItem(settingsItem)
@@ -426,6 +431,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         presentSettings(tab: .hotkeys)
     }
 
+    private var cheatSheetWindow: NSWindow?
+
+    @objc private func openCheatSheet() {
+        if let window = cheatSheetWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = HotkeyCheatSheet(bindings: hotkeyBindings) { [weak self] in
+            self?.cheatSheetWindow?.close()
+        }
+        let host = NSHostingController(rootView: view)
+        host.sizingOptions = .preferredContentSize
+        let window = NSWindow(contentViewController: host)
+        window.title = "Hotkeys & kommandoer"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        cheatSheetWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func openInfoModeFromMenu() {
         if hudController.isInfoModeVisible {
             hudController.close()
@@ -483,14 +511,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .idle:
             button.image = NSImage(systemSymbolName: "waveform.circle", accessibilityDescription: "Jarvis")
             button.contentTintColor = nil
+            button.title = ""
         case .recording:
             button.image = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")
             button.contentTintColor = .systemRed
+            button.title = " Optager"
         case .processing:
             button.image = NSImage(systemSymbolName: "gear.circle", accessibilityDescription: "Processing")
             button.contentTintColor = .systemOrange
+            button.title = " Arbejder"
         }
         button.image?.isTemplate = (state == .idle)
+        button.font = NSFont.systemFont(ofSize: 11, weight: .medium)
     }
 
     // MARK: - Hotkeys

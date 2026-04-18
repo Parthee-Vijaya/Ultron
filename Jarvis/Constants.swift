@@ -6,7 +6,7 @@ enum Constants {
     /// breaking Keychain-service IDs and log paths.
     static let displayName = "J.A.R.V.I.S"
     static let appName = "Jarvis"
-    static let appVersion = "1.1.5-alpha.1"
+    static let appVersion = "1.1.6-alpha.1"
     static let bundleID = "pavi.Jarvis"
 
     // MARK: - Spacing scale (use these instead of magic numbers)
