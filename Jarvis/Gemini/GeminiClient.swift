@@ -177,7 +177,35 @@ final class GeminiClient {
     }
 
     private func sendTextWithSearch(prompt: String, imageData: Data?, mode: Mode) async throws -> String {
-        var parts: [GeminiPart] = [.text(prompt)]
+        // 1) Pre-fetch real web results via DuckDuckGo. Gemini's own `googleSearch`
+        //    tool fires inconsistently — sometimes the model "knows" a stale answer
+        //    and skips the tool. Doing our own DDG call FIRST guarantees fresh
+        //    context in the prompt; we keep `googleSearch` enabled too as a
+        //    cross-reference.
+        let searchResults = await WebSearchService.shared.search(query: prompt, limit: 4)
+        var augmentedPrompt = prompt
+        if !searchResults.isEmpty {
+            let today = Self.todayDateString()
+            let context = searchResults
+                .map { $0.promptLine }
+                .joined(separator: "\n")
+            augmentedPrompt = """
+            Dato: \(today)
+            Web-søgeresultater fra DuckDuckGo:
+            \(context)
+
+            Brugerens spørgsmål: \(prompt)
+
+            Brug søgeresultaterne som primær kilde. Hvis de ikke dækker spørgsmålet, \
+            brug google_search-værktøjet til at søge videre. Svar kortfattet på samme sprog \
+            som spørgsmålet. Angiv gerne 1-2 kilder i parentes.
+            """
+            LoggingService.shared.log("WebSearch: \(searchResults.count) DDG results prepended")
+        } else {
+            LoggingService.shared.log("WebSearch: DDG returned 0 results — relying on googleSearch tool", level: .warning)
+        }
+
+        var parts: [GeminiPart] = [.text(augmentedPrompt)]
         if let imageData { parts.append(.data(mime: "image/png", imageData)) }
         let request = GeminiRequest(
             systemInstruction: GeminiContent(role: "system", parts: [.text(mode.systemPrompt)]),
@@ -186,13 +214,20 @@ final class GeminiClient {
             generationConfig: GeminiGenerationConfig(maxOutputTokens: mode.maxTokens)
         )
 
-        LoggingService.shared.log("Gemini REST+search POST: model=\(modelName(for: mode)), promptChars=\(prompt.count), image=\(imageData != nil)")
+        LoggingService.shared.log("Gemini REST+search POST: model=\(modelName(for: mode)), promptChars=\(augmentedPrompt.count), image=\(imageData != nil)")
         let response = try await rest.generate(model: modelName(for: mode), request: request, mode: mode)
         guard let text = response.text else { throw GeminiRESTError.emptyResponse }
         if !response.groundingSources.isEmpty {
             LoggingService.shared.log("Gemini grounded on: \(response.groundingSources.prefix(5).joined(separator: ", "))")
         }
         return postProcess(text)
+    }
+
+    private static func todayDateString() -> String {
+        let df = DateFormatter()
+        df.dateStyle = .full
+        df.locale = Locale(identifier: "da_DK")
+        return df.string(from: Date())
     }
 
     /// Transcribe an audio blob to text. Used before the grounded-search call so

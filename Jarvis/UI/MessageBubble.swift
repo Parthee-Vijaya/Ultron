@@ -1,45 +1,57 @@
 import SwiftUI
 
+/// Chat message row — Claude-desktop inspired.
+///
+/// User messages: right-aligned, amber-tinted pill with max 80% width.
+/// Assistant messages: full-width with no bubble, just a subtle icon gutter so
+/// the reader's eye tracks who's speaking. This matches how Anthropic's
+/// desktop app lays out its threads.
 struct MessageBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 40) }
-
-            MarkdownTextView(
-                message.text,
-                foregroundColor: message.role == .user ? .white : .white.opacity(0.95)
-            )
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(bubbleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        message.role == .user
-                            ? JarvisTheme.brightCyan.opacity(0.6)
-                            : JarvisTheme.neonCyan.opacity(0.25),
-                        lineWidth: 1
-                    )
+        HStack(alignment: .top, spacing: 10) {
+            if message.role == .user {
+                Spacer(minLength: 40)
+                userBubble
+            } else {
+                assistantIcon
+                assistantBody
+                Spacer(minLength: 0)
             }
-            .shadow(
-                color: message.role == .user ? JarvisTheme.neonCyan.opacity(0.4) : .clear,
-                radius: 6,
-                y: 1
-            )
-
-            if message.role == .assistant { Spacer(minLength: 40) }
         }
     }
 
-    @ViewBuilder
-    private var bubbleBackground: some View {
-        if message.role == .user {
-            JarvisTheme.userBubble
-        } else {
-            JarvisTheme.surfaceElevated.opacity(0.85)
+    private var userBubble: some View {
+        MarkdownTextView(message.text, foregroundColor: .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(JarvisTheme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(JarvisTheme.accentBright.opacity(0.6), lineWidth: 0.75)
+            )
+    }
+
+    private var assistantIcon: some View {
+        Circle()
+            .fill(JarvisTheme.accent)
+            .frame(width: 22, height: 22)
+            .overlay(
+                Text("J")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            )
+    }
+
+    private var assistantBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Jarvis")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(JarvisTheme.textSecondary)
+            MarkdownTextView(message.text, foregroundColor: JarvisTheme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

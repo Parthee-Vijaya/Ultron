@@ -37,11 +37,37 @@ struct ChatView: View {
         HStack(spacing: 10) {
             Circle()
                 .fill(JarvisTheme.accent)
-                .frame(width: 8, height: 8)
+                .frame(width: 22, height: 22)
+                .overlay(
+                    Text("J")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                )
             Text("Jarvis")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(JarvisTheme.textPrimary)
             Spacer()
+
+            if !chatSession.messages.isEmpty {
+                Button {
+                    chatSession.clear()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                        Text("New chat")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule().fill(JarvisTheme.surfaceElevated)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Start en ny samtale")
+            }
+
             headerIconButton(system: isPinned ? "pin.fill" : "pin",
                              active: isPinned, help: isPinned ? "Unpin" : "Pin",
                              action: onPin)
@@ -99,21 +125,57 @@ struct ChatView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Circle()
-                .fill(JarvisTheme.accent.opacity(0.85))
-                .frame(width: 14, height: 14)
-                .shadow(color: JarvisTheme.accent.opacity(0.6), radius: 4)
-                .padding(.top, 30)
-            Text("What can I help you with today?")
-                .font(.system(size: 15, weight: .medium))
+        VStack(spacing: 14) {
+            // The stylised amber star that appears in Claude's empty state
+            Image(systemName: "sparkle")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(JarvisTheme.accent)
+                .shadow(color: JarvisTheme.accent.opacity(0.4), radius: 6)
+                .padding(.top, 40)
+            Text("Hvad kan jeg hjælpe dig med?")
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(JarvisTheme.textPrimary)
-            Text("Skriv en besked eller hold mic-knappen")
+            Text("Skriv en besked, eller tryk mic for at tale")
                 .font(.system(size: 12))
                 .foregroundStyle(JarvisTheme.textMuted)
+
+            // Suggestion chips — tapping one pre-fills the input
+            VStack(spacing: 6) {
+                chip("Opsummer et dokument for mig")
+                chip("Hvad sker der i nyhederne i dag?")
+                chip("Hjælp mig med at skrive en mail")
+            }
+            .padding(.top, 6)
         }
         .padding(.vertical, 30)
+        .padding(.horizontal, 24)
         .frame(maxWidth: .infinity)
+    }
+
+    private func chip(_ text: String) -> some View {
+        Button { inputText = text; inputFocused = true } label: {
+            HStack {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+                Spacer()
+                Image(systemName: "arrow.up.left")
+                    .font(.system(size: 10))
+                    .foregroundStyle(JarvisTheme.textMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(JarvisTheme.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(JarvisTheme.hairline, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Input Bar
