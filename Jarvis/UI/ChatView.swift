@@ -20,10 +20,13 @@ struct ChatView: View {
     var commandRouter: ChatCommandRouter? = nil
     var availableModes: [Mode] = []
     var shortcutLookup: (Mode) -> String? = { _ in nil }
-    /// Optional external trigger for starting/stopping voice recording when
-    /// the user picks a `.voice` mode. Wired to RecordingPipeline in AppDelegate.
+    /// Shared input buffer (β.12) — AppDelegate writes dictation transcripts
+    /// here; the command bar binds its TextField to `buffer.text`. Optional
+    /// so legacy callers without the router keep the old flow.
+    var inputBuffer: ChatInputBuffer? = nil
+    /// Toggle chat-mode mic recording. AppDelegate wires this to start/stop
+    /// AudioCaptureManager and transcribe into `inputBuffer.text`.
     var onToggleVoiceRecord: (() -> Void)? = nil
-    var isVoiceRecording: Bool = false
     /// Optional hint-row dependencies. When all are present, `ChatHintRow` is
     /// rendered below the command bar; any missing piece hides the row.
     var permissionsManager: PermissionsManager? = nil
@@ -33,7 +36,24 @@ struct ChatView: View {
 
     @State private var inputText = ""
     @State private var selectedMode: Mode = BuiltInModes.chat
+    @State private var fallbackCommandText: String = ""
     @FocusState private var inputFocused: Bool
+
+    /// When the shared `ChatInputBuffer` is provided, bind through to it so
+    /// AppDelegate's dictation transcripts appear in the command bar. Otherwise
+    /// fall back to local @State so legacy callers still work.
+    private var commandTextBinding: Binding<String> {
+        if let inputBuffer {
+            return Binding(
+                get: { inputBuffer.text },
+                set: { inputBuffer.text = $0 }
+            )
+        }
+        return Binding(
+            get: { fallbackCommandText },
+            set: { fallbackCommandText = $0 }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +61,7 @@ struct ChatView: View {
                 ChatCommandBar(
                     chatSession: chatSession,
                     selectedMode: $selectedMode,
+                    commandText: commandTextBinding,
                     availableModes: availableModes,
                     shortcutLookup: shortcutLookup,
                     onSubmit: { text in
@@ -50,7 +71,8 @@ struct ChatView: View {
                     onClose: onClose,
                     onPin: onPin,
                     isPinned: isPinned,
-                    isRecording: isVoiceRecording,
+                    isRecording: inputBuffer?.isRecording ?? false,
+                    isTranscribing: inputBuffer?.isTranscribing ?? false,
                     onToggleRecord: onToggleVoiceRecord
                 )
                 if let permissionsManager, let onOpenSettings {
@@ -289,7 +311,21 @@ struct ChatView: View {
         let columns = [GridItem(.flexible(), spacing: 10),
                        GridItem(.flexible(), spacing: 10),
                        GridItem(.flexible(), spacing: 10)]
-        let modes = Array(availableModes.prefix(6))
+        // v1.1.4: prefer user-facing priority over `BuiltInModes.all` order so
+        // Chat / Q&A / Vision land on the front page instead of
+        // Dictation / VibeCode / Professional (which are paste-mode niches).
+        let priorityOrder: [UUID] = [
+            BuiltInModes.chat.id,
+            BuiltInModes.qna.id,
+            BuiltInModes.vision.id,
+            BuiltInModes.translate.id,
+            BuiltInModes.agent.id,
+            BuiltInModes.summarize.id
+        ]
+        let modes = priorityOrder
+            .compactMap { id in availableModes.first(where: { $0.id == id }) }
+            .prefix(6)
+            .map { $0 }
         return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(modes, id: \.id) { mode in
                 Button {

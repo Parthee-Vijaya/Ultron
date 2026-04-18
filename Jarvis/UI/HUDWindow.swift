@@ -36,7 +36,7 @@ class HUDWindowController {
     var availableModes: [Mode] = []
     var shortcutLookup: (Mode) -> String? = { _ in nil }
     var onToggleVoiceRecord: (() -> Void)?
-    var isVoiceRecording: Bool = false
+    var inputBuffer: ChatInputBuffer?
     var permissionsManager: PermissionsManager?
     var hasGeminiKey: Bool = false
     var hasAnthropicKey: Bool = false
@@ -185,7 +185,7 @@ class HUDWindowController {
             availableModes: availableModes,
             shortcutLookup: shortcutLookup,
             onToggleVoiceRecord: onToggleVoiceRecord != nil ? { [weak self] in self?.onToggleVoiceRecord?() } : nil,
-            isVoiceRecording: isVoiceRecording,
+            inputBuffer: inputBuffer,
             permissionsManager: permissionsManager,
             hasGeminiKey: hasGeminiKey,
             hasAnthropicKey: hasAnthropicKey,

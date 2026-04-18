@@ -1,17 +1,17 @@
 import SwiftUI
 
-/// Spotlight-inspired command bar for the chat window (β.11+).
+/// Spotlight-inspired command bar (β.12 revamp).
 ///
-/// Hosts the Jarvis sparkle, a text field, a mode picker (acts as "New Chat ▾"),
-/// and an adaptive send button. Replaces the old ChatView header + input bar.
-/// Unifies mode launching: pick any mode, type a prompt, hit send — the router
-/// dispatches to the correct pipeline and results render as chat bubbles.
+/// Always-editable text field, a dedicated mic button next to it for voice
+/// input, a mode picker pill, and an adaptive send button. Picking a mode
+/// from the dropdown no longer auto-starts recording — use the mic button
+/// instead. Dictation transcripts land in the text field so the user can
+/// review/edit before hitting send.
 struct ChatCommandBar: View {
     let chatSession: ChatSession
     @Binding var selectedMode: Mode
+    @Binding var commandText: String
     let availableModes: [Mode]
-    /// Maps a mode to its keyboard shortcut display string (⌥⇧A, ⌥Q, …).
-    /// Called when the mode picker is rendered so each row shows its shortcut.
     let shortcutLookup: (Mode) -> String?
 
     let onSubmit: (String) -> Void
@@ -19,16 +19,16 @@ struct ChatCommandBar: View {
     let onClose: () -> Void
     let onPin: () -> Void
     let isPinned: Bool
-    /// Recording state for `.voice` modes — controls the mic button visuals.
-    /// Nil when the selected mode isn't `.voice`.
+    /// Chat-dictation state, owned by `AppDelegate` and surfaced here so the
+    /// mic button can flip between record / processing / idle icons.
     let isRecording: Bool
+    let isTranscribing: Bool
     let onToggleRecord: (() -> Void)?
 
-    @State private var commandText: String = ""
     @FocusState private var inputFocused: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "sparkle")
                 .font(.system(size: 16))
                 .foregroundStyle(JarvisTheme.accent)
@@ -41,10 +41,10 @@ struct ChatCommandBar: View {
                 .focused($inputFocused)
                 .lineLimit(1...4)
                 .onSubmit(performSubmit)
-                .disabled(selectedMode.inputKind == .voice)
 
             Spacer(minLength: 8)
 
+            micButton
             modePicker
             sendButton
 
@@ -67,24 +67,56 @@ struct ChatCommandBar: View {
     // MARK: - Placeholder per mode
 
     private var placeholder: String {
+        if isRecording { return "Optager… tryk stop for at transskribere" }
+        if isTranscribing { return "Transskriberer…" }
         switch selectedMode.inputKind {
-        case .voice:
-            return isRecording ? "Optager… tryk stop for at transskribere" : "Valgt — tryk mic for at optage"
         case .screenshot:
-            return "Beskriv hvad du vil vide om skærmen…"
+            return "Beskriv hvad du vil vide om skærmbilledet (eller lad stå tomt)…"
         case .document:
-            return "Tryk Beregn for at vælge et dokument"
-        case .text:
+            return "Tryk dokument-knappen for at vælge en fil"
+        case .voice, .text:
             switch selectedMode.name {
-            case "Q&A":        return "Stil et spørgsmål…"
-            case "Translate":  return "Tekst at oversætte…"
-            case "Agent":      return "Bed Jarvis gøre noget…"
-            case "Chat":       return "Hvad kan jeg hjælpe med i dag?"
-            case "VibeCode":   return "Beskriv funktionen du vil bygge…"
+            case "Q&A":          return "Stil et spørgsmål…"
+            case "Translate":    return "Tekst at oversætte…"
+            case "Agent":        return "Bed Jarvis gøre noget…"
+            case "Chat":         return "Hvad kan jeg hjælpe med i dag?"
+            case "VibeCode":     return "Beskriv funktionen du vil bygge…"
             case "Professional": return "Tekst at omskrive professionelt…"
-            default:           return "Hvad kan jeg hjælpe med?"
+            case "Dictation":    return "Skriv eller tryk mic for at tale…"
+            default:             return "Hvad kan jeg hjælpe med?"
             }
         }
+    }
+
+    // MARK: - Mic button (always visible)
+
+    @ViewBuilder
+    private var micButton: some View {
+        if let onToggleRecord {
+            Button(action: onToggleRecord) {
+                Image(systemName: micSymbol)
+                    .font(.system(size: 20))
+                    .foregroundStyle(micColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(isTranscribing)
+            .help(micHelp)
+        }
+    }
+
+    private var micSymbol: String {
+        if isTranscribing { return "waveform" }
+        return isRecording ? "stop.circle.fill" : "mic.circle.fill"
+    }
+
+    private var micColor: Color {
+        if isTranscribing { return JarvisTheme.textMuted }
+        return isRecording ? JarvisTheme.criticalGlow : JarvisTheme.accent
+    }
+
+    private var micHelp: String {
+        if isTranscribing { return "Transskriberer…" }
+        return isRecording ? "Stop optagelse" : "Tale-til-tekst"
     }
 
     // MARK: - Mode picker
@@ -104,13 +136,14 @@ struct ChatCommandBar: View {
             ForEach(availableModes, id: \.id) { mode in
                 Button {
                     selectedMode = mode
-                    if mode.inputKind == .voice, let onToggleRecord {
-                        onToggleRecord()  // auto-start mic on selection
-                    }
-                    if mode.inputKind == .document {
-                        performSubmit()   // instantly open file picker
-                    }
                     inputFocused = true
+                    // β.12: no longer auto-starts recording for voice modes.
+                    // User explicitly clicks the mic button when ready.
+                    // Document mode still opens picker on select since that's
+                    // the only sensible trigger — empty submit would be noise.
+                    if mode.inputKind == .document {
+                        performSubmit()
+                    }
                 } label: {
                     HStack {
                         Label(mode.name, systemImage: mode.icon)
@@ -144,24 +177,15 @@ struct ChatCommandBar: View {
         .fixedSize()
     }
 
-    // MARK: - Send button (adapts to inputKind)
+    // MARK: - Send button
 
     @ViewBuilder
     private var sendButton: some View {
         switch selectedMode.inputKind {
-        case .voice:
-            Button(action: { onToggleRecord?() }) {
-                Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(isRecording ? JarvisTheme.criticalGlow : JarvisTheme.accent)
-            }
-            .buttonStyle(.plain)
-            .help(isRecording ? "Stop optagelse" : "Start optagelse")
-
         case .document:
             Button(action: performSubmit) {
                 Image(systemName: "arrow.up.doc.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 20))
                     .foregroundStyle(JarvisTheme.accent)
             }
             .buttonStyle(.plain)
@@ -170,17 +194,17 @@ struct ChatCommandBar: View {
         case .screenshot:
             Button(action: performSubmit) {
                 Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 24))
-                    .foregroundStyle(canSubmit ? JarvisTheme.accent : JarvisTheme.textMuted)
+                    .font(.system(size: 20))
+                    .foregroundStyle(canSubmitScreenshot ? JarvisTheme.accent : JarvisTheme.textMuted)
             }
             .buttonStyle(.plain)
             .disabled(chatSession.isStreaming)
             .help("Tag skærmbillede og spørg")
 
-        case .text:
+        case .text, .voice:
             Button(action: performSubmit) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 20))
                     .foregroundStyle(canSubmit ? JarvisTheme.accent : JarvisTheme.textMuted)
             }
             .buttonStyle(.plain)
@@ -194,10 +218,16 @@ struct ChatCommandBar: View {
         !commandText.trimmingCharacters(in: .whitespaces).isEmpty && !chatSession.isStreaming
     }
 
+    private var canSubmitScreenshot: Bool {
+        !chatSession.isStreaming
+    }
+
     private func performSubmit() {
         let text = commandText.trimmingCharacters(in: .whitespaces)
-        // Screenshot + document modes allow empty text
-        if selectedMode.inputKind == .text, text.isEmpty { return }
+        // Screenshot + document submit even when text is empty.
+        if selectedMode.inputKind == .text || selectedMode.inputKind == .voice {
+            if text.isEmpty { return }
+        }
         commandText = ""
         onSubmit(text)
     }

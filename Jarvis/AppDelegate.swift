@@ -38,6 +38,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var agentChatSession: ChatSession { chatSession }
     private var agentChatPipeline: AgentChatPipeline?
     private var commandRouter: ChatCommandRouter?
+    /// Shared buffer for the chat command-bar text field. Lets
+    /// `handleChatVoiceToggle` push dictation transcripts back into the UI.
+    private let chatInputBuffer = ChatInputBuffer()
     let locationService = LocationService()
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
@@ -159,6 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hudController.onToggleVoiceRecord = { [weak self] in
             self?.handleChatVoiceToggle()
         }
+        hudController.inputBuffer = chatInputBuffer
         hudController.permissionsManager = permissions
         hudController.hasGeminiKey = keychainService.hasAPIKey
         hudController.hasAnthropicKey = keychainService.getAnthropicKey() != nil
@@ -187,16 +191,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return hotkeyBindings.binding(for: action).displayString
     }
 
-    /// Toggles a dictation-from-chat recording. Uses the existing
-    /// RecordingPipeline — when the transcript finalises, it lands in the
-    /// chat session via the pipeline's existing post-process hook.
+    /// Chat-dictation: record mic directly (not via RecordingPipeline, which
+    /// would paste/HUD), transcribe, drop the result into the chat's command
+    /// text so the user can review + edit before sending. Written as a single
+    /// method so there's only one state machine to reason about.
     private func handleChatVoiceToggle() {
-        if hudController.isVoiceRecording {
-            pipeline.handleRecordStop()
-            hudController.isVoiceRecording = false
+        let buffer = chatInputBuffer
+        if buffer.isRecording {
+            // Stop + transcribe
+            let audioData = audioCapture.stopRecording()
+            buffer.isRecording = false
+            guard !audioData.isEmpty else { return }
+            buffer.isTranscribing = true
+
+            Task { [weak self] in
+                guard let self else { return }
+                let result = await self.geminiClient.sendAudio(audioData, mode: BuiltInModes.dictation)
+                await MainActor.run {
+                    buffer.isTranscribing = false
+                    switch result {
+                    case .success(let transcript):
+                        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            // Append to whatever the user had already typed —
+                            // lets them combine typed context with spoken content.
+                            if buffer.text.isEmpty {
+                                buffer.text = trimmed
+                            } else {
+                                buffer.text += " " + trimmed
+                            }
+                        }
+                    case .failure(let error):
+                        LoggingService.shared.log("Chat dictation transcription failed: \(error)", level: .warning)
+                    }
+                }
+            }
         } else {
-            pipeline.handleRecordStart(mode: BuiltInModes.dictation, captureScreen: false)
-            hudController.isVoiceRecording = true
+            // Only start if RecordingPipeline isn't already using the mic
+            // via a hotkey — sharing AudioCaptureManager with two concurrent
+            // sessions would step on the WAV header.
+            if case .recording = hudController.hudState.currentPhase { return }
+            do {
+                try audioCapture.startRecording()
+                buffer.isRecording = true
+            } catch {
+                LoggingService.shared.log("Chat dictation start failed: \(error)", level: .warning)
+            }
         }
     }
 

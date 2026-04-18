@@ -28,7 +28,7 @@ struct HUDContentView: View {
     var availableModes: [Mode] = []
     var shortcutLookup: (Mode) -> String? = { _ in nil }
     var onToggleVoiceRecord: (() -> Void)?
-    var isVoiceRecording: Bool = false
+    var inputBuffer: ChatInputBuffer?
     var permissionsManager: PermissionsManager?
     var hasGeminiKey: Bool = false
     var hasAnthropicKey: Bool = false
@@ -107,8 +107,8 @@ struct HUDContentView: View {
                     commandRouter: commandRouter,
                     availableModes: availableModes,
                     shortcutLookup: shortcutLookup,
+                    inputBuffer: inputBuffer,
                     onToggleVoiceRecord: onToggleVoiceRecord,
-                    isVoiceRecording: isVoiceRecording,
                     permissionsManager: permissionsManager,
                     hasGeminiKey: hasGeminiKey,
                     hasAnthropicKey: hasAnthropicKey,
