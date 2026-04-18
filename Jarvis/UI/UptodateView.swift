@@ -9,15 +9,15 @@ struct UptodateView: View {
         VStack(spacing: 0) {
             header
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    weatherSection
-                    newsSection
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+            VStack(alignment: .leading, spacing: 14) {
+                weatherSection
+                newsSection
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .frame(width: 500, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .task {
             await service.refresh()
         }

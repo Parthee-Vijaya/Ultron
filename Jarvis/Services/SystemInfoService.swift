@@ -15,10 +15,25 @@ struct SystemInfoSnapshot: Equatable {
     var dnsServers: [String] = []     // primary resolvers
     var hostinfo: String?             // raw /usr/bin/hostinfo output
     var hardwareSummary: String?      // abbreviated system_profiler output
+    var wifi: WiFiInfo?               // current WiFi SSID + signal, if available
 
     /// Produced by the optional manual buttons.
     var speedtestSummary: String?     // e.g. "↓ 485 Mb/s, ↑ 42 Mb/s, idle 12 ms"
     var networkScan: [NetworkDevice] = []
+}
+
+struct WiFiInfo: Equatable {
+    let ssid: String?
+    let rssi: Int?           // dBm, typically -30 (excellent) to -90 (poor)
+    let transmitRate: Double? // Mbps
+
+    var qualityLabel: String {
+        guard let rssi else { return "ukendt" }
+        if rssi >= -55 { return "fremragende" }
+        if rssi >= -65 { return "god" }
+        if rssi >= -75 { return "okay" }
+        return "svag"
+    }
 }
 
 struct NetworkDevice: Identifiable, Equatable {
@@ -54,6 +69,7 @@ actor SystemInfoService {
         snap.dnsServers = d
         snap.hostinfo = hinfo
         snap.hardwareSummary = hware
+        snap.wifi = WiFiInfoService.current()
         return snap
     }
 

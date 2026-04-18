@@ -273,10 +273,10 @@ class HUDWindowController {
         cancelAutoClose()
 
         let view = UptodateView(service: updatesService) { [weak self] in self?.close() }
-            .frame(minWidth: 480, minHeight: 560)
             .jarvisHUDBackground(showReticle: false)
 
         let hostingController = NSHostingController(rootView: view)
+        hostingController.sizingOptions = .preferredContentSize
 
         let panel = NSPanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
@@ -287,16 +287,11 @@ class HUDWindowController {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.minSize = NSSize(width: 440, height: 480)
+        panel.minSize = NSSize(width: 440, height: 200)
 
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let w: CGFloat = 500
-            let h: CGFloat = 620
-            let x = screenFrame.maxX - w - Constants.HUD.padding
-            let y = screenFrame.maxY - h - Constants.HUD.padding
-            panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
-        }
+        // Intrinsic-size-driven: let the hosting controller pick the height,
+        // then pin the panel to the top-right of the visible screen.
+        anchorPanelTopRight(panel)
 
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -314,10 +309,10 @@ class HUDWindowController {
         cancelAutoClose()
 
         let view = InfoModeView(service: infoModeService) { [weak self] in self?.close() }
-            .frame(minWidth: 520, minHeight: 620)
             .jarvisHUDBackground(showReticle: false)
 
         let hostingController = NSHostingController(rootView: view)
+        hostingController.sizingOptions = .preferredContentSize
 
         let panel = NSPanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
@@ -328,16 +323,11 @@ class HUDWindowController {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.minSize = NSSize(width: 520, height: 560)
+        panel.minSize = NSSize(width: 520, height: 200)
 
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let w: CGFloat = 560
-            let h: CGFloat = 680
-            let x = screenFrame.maxX - w - Constants.HUD.padding
-            let y = screenFrame.maxY - h - Constants.HUD.padding
-            panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
-        }
+        // Let the SwiftUI intrinsic content size drive the panel height; we
+        // only pin the top-right anchor after the hosting controller sets it.
+        anchorPanelTopRight(panel)
 
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -345,15 +335,31 @@ class HUDWindowController {
         hudState.isVisible = true
     }
 
+    /// After the hosting controller has sized the panel to its SwiftUI content,
+    /// move it to the top-right of the visible screen. Clamps to screen height
+    /// if the content is pathologically tall.
+    private func anchorPanelTopRight(_ panel: NSPanel) {
+        DispatchQueue.main.async { [weak self, weak panel] in
+            guard let panel, let screen = NSScreen.main else { return }
+            let screenFrame = screen.visibleFrame
+            var frame = panel.frame
+            let maxHeight = screenFrame.height - 40
+            if frame.height > maxHeight { frame.size.height = maxHeight }
+            frame.origin.x = screenFrame.maxX - frame.width - Constants.HUD.padding
+            frame.origin.y = screenFrame.maxY - frame.height - Constants.HUD.padding
+            panel.setFrame(frame, display: true)
+            _ = self  // silence unused warning
+        }
+    }
+
     private func resizePanelForUptodate() {
         guard let panel, let updatesService else { return }
         let view = UptodateView(service: updatesService) { [weak self] in self?.close() }
-            .frame(minWidth: 480, minHeight: 560)
             .jarvisHUDBackground(showReticle: false)
         let host = NSHostingController(rootView: view)
+        host.sizingOptions = .preferredContentSize
         panel.contentViewController = host
-        let origin = panel.frame.origin
-        panel.setFrame(NSRect(x: origin.x, y: origin.y, width: 500, height: 620), display: true, animate: true)
+        anchorPanelTopRight(panel)
     }
 
     private func resizePanelForChat() {

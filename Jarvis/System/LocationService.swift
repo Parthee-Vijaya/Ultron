@@ -69,6 +69,15 @@ final class LocationService: NSObject {
         if let coordinate, let last = lastRefresh, Date().timeIntervalSince(last) < 60 {
             return coordinate
         }
+        // Stale-but-present coordinate: return it immediately and let the fresh
+        // request race in the background, so Info-mode paints without waiting
+        // 5 s on CLLocationManager's safety net every time. The delegate updates
+        // `coordinate`/`lastRefresh` when the fresh fix arrives.
+        if let cached = coordinate,
+           authorization == .authorized || authorization == .authorizedAlways {
+            manager.requestLocation()
+            return cached
+        }
 
         switch authorization {
         case .denied, .restricted:

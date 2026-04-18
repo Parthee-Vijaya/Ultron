@@ -14,17 +14,17 @@ struct InfoModeView: View {
         VStack(spacing: 0) {
             header
             Divider().background(JarvisTheme.neonCyan.opacity(0.2))
-            ScrollView {
-                VStack(spacing: 12) {
-                    tilesRow
-                    claudeStatsTile
-                    systemTile
-                    networkActions
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+            VStack(spacing: 12) {
+                tilesRow
+                claudeStatsTile
+                systemTile
+                networkActions
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .frame(width: 560, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .task { await service.refresh() }
     }
 
@@ -68,8 +68,53 @@ struct InfoModeView: View {
     private var tilesRow: some View {
         HStack(alignment: .top, spacing: 12) {
             weatherTile
+            sunTile
             newsTile
         }
+    }
+
+    private var sunTile: some View {
+        tile(title: "Sol", icon: "sun.horizon.fill") {
+            if let sun = service.weather?.todaySun {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sunrise.fill")
+                            .foregroundStyle(JarvisTheme.brightCyan)
+                        Text(Self.hourMinute.string(from: sun.sunrise))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                    HStack(spacing: 8) {
+                        Image(systemName: "sunset.fill")
+                            .foregroundStyle(JarvisTheme.neonCyan)
+                        Text(Self.hourMinute.string(from: sun.sunset))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                    if let daylight = service.weather?.daily.first?.daylight {
+                        Text("Dagslys \(Self.prettyDaylight(daylight))")
+                            .font(.caption2)
+                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                            .padding(.top, 2)
+                    }
+                }
+            } else {
+                placeholder("Henter sol…")
+            }
+        }
+    }
+
+    private static let hourMinute: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        df.locale = Locale(identifier: "da_DK")
+        return df
+    }()
+
+    private static func prettyDaylight(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds / 3600)
+        let minutes = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
+        return "\(hours)t \(minutes) min"
     }
 
     private var weatherTile: some View {
@@ -157,6 +202,14 @@ struct InfoModeView: View {
                     }
                     Text(commute.prettyDistance)
                         .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    if commute.baselineTravelTime != nil {
+                        HStack(spacing: 4) {
+                            Image(systemName: trafficIcon(commute.trafficCondition))
+                                .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                            Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
+                                .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                        }
+                    }
                     HStack(spacing: 4) {
                         Image(systemName: "bolt.car.fill")
                             .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
@@ -171,6 +224,26 @@ struct InfoModeView: View {
             } else {
                 placeholder("Beregner rute…")
             }
+        }
+    }
+
+    private func trafficIcon(_ condition: CommuteEstimate.TrafficCondition) -> String {
+        switch condition {
+        case .free:    return "checkmark.circle.fill"
+        case .light:   return "car.fill"
+        case .heavy:   return "exclamationmark.triangle.fill"
+        case .severe:  return "exclamationmark.octagon.fill"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private func trafficColor(_ condition: CommuteEstimate.TrafficCondition) -> Color {
+        switch condition {
+        case .free:    return JarvisTheme.brightCyan
+        case .light:   return JarvisTheme.neonCyan
+        case .heavy:   return JarvisTheme.warningGlow
+        case .severe:  return JarvisTheme.criticalGlow
+        case .unknown: return JarvisTheme.neonCyan.opacity(0.5)
         }
     }
 
@@ -351,6 +424,7 @@ struct InfoModeView: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     infoRow("RAM", value: ramLine)
+                    infoRow("WiFi", value: wifiLine)
                     infoRow("DNS", value: service.systemInfo.dnsServers.first)
                     infoRow("Hardware", value: hardwareLine)
                 }
@@ -498,6 +572,21 @@ struct InfoModeView: View {
             return String(format: "%.1f GB fri / %.0f GB", max(0, total - used), total)
         }
         return String(format: "%.0f GB", total)
+    }
+
+    private var wifiLine: String? {
+        guard let wifi = service.systemInfo.wifi else { return nil }
+        var parts: [String] = []
+        if let ssid = wifi.ssid, !ssid.isEmpty {
+            parts.append(ssid)
+        }
+        if let rssi = wifi.rssi {
+            parts.append("\(rssi) dBm · \(wifi.qualityLabel)")
+        }
+        if let rate = wifi.transmitRate {
+            parts.append(String(format: "%.0f Mbps", rate))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var hardwareLine: String? {

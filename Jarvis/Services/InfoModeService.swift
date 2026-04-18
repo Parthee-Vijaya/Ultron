@@ -35,6 +35,11 @@ final class InfoModeService {
     private let commuteService = CommuteService()
     private let systemInfoService = SystemInfoService()
     private let claudeStatsService = ClaudeStatsService()
+    private let cache = InfoCache()
+
+    /// Guards against concurrent `refresh` calls. The view calls `.task` on appear
+    /// which can fire multiple times during SwiftUI state churn.
+    private var refreshTask: Task<Void, Never>?
 
     init(locationService: LocationService) {
         self.locationService = locationService
@@ -44,28 +49,77 @@ final class InfoModeService {
         if !force, case .loaded = state, let last = lastRefresh, Date().timeIntervalSince(last) < 2 * 60 {
             return
         }
+
+        // Cancel any in-flight refresh so we don't double-paint.
+        refreshTask?.cancel()
+
+        // Paint from cache immediately so the panel feels instant on cold opens.
+        if !force {
+            if let cachedWeather = await cache.loadWeather(fresh: true) {
+                self.weather = cachedWeather
+            }
+            if let cachedNews = await cache.loadNews(fresh: true) {
+                self.newsBySource = cachedNews
+            }
+        }
+
         state = .loading
 
-        // Fire all tiles in parallel — no tile blocks another.
-        async let sysBasics = systemInfoService.fetchBasics()
-        async let weatherResult: WeatherSnapshot? = loadWeather()
-        async let newsResult: [NewsHeadline.Source: [NewsHeadline]] =
-            newsService.fetchAll(maxPerSource: 3)
-        async let commuteResult = loadCommute()
-        async let claudeResult = claudeStatsService.fetch()
+        // Each tile runs as its own Task and mutates its own published property
+        // as soon as its data is ready. The view (which observes each property
+        // individually) paints tile-by-tile instead of waiting on the slowest.
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.loadSystemTile() }
+                group.addTask { await self.loadClaudeTile() }
+                group.addTask { await self.loadWeatherTile() }
+                group.addTask { await self.loadNewsTile() }
+                group.addTask { await self.loadCommuteTile() }
+            }
+            await MainActor.run {
+                self.lastRefresh = Date()
+                self.state = .loaded
+            }
+        }
+        refreshTask = task
+        await task.value
+    }
 
-        let (sys, w, news, com, claude) = await (sysBasics, weatherResult, newsResult, commuteResult, claudeResult)
+    // Per-tile loaders. Each mutates exactly one published property, off the
+    // critical path of the others.
 
-        self.systemInfo = sys
-        self.weather = w
-        self.newsBySource = news
-        self.claudeStats = claude
-        switch com {
+    private func loadSystemTile() async {
+        let snap = await systemInfoService.fetchBasics()
+        self.systemInfo = snap
+    }
+
+    private func loadClaudeTile() async {
+        let snap = await claudeStatsService.fetch()
+        self.claudeStats = snap
+    }
+
+    private func loadWeatherTile() async {
+        guard let snap = await loadWeather() else { return }
+        self.weather = snap
+        await cache.storeWeather(snap)
+    }
+
+    private func loadNewsTile() async {
+        let news = await newsService.fetchAll(maxPerSource: 3)
+        // Don't overwrite cached-good news with a network-failure empty map.
+        if news.values.contains(where: { !$0.isEmpty }) {
+            self.newsBySource = news
+            await cache.storeNews(news)
+        }
+    }
+
+    private func loadCommuteTile() async {
+        let result = await loadCommute()
+        switch result {
         case .success(let est): self.commute = est; self.commuteError = nil
         case .failure(let msg): self.commute = nil; self.commuteError = msg
         }
-        self.lastRefresh = Date()
-        self.state = .loaded
     }
 
     // MARK: - Manual actions
