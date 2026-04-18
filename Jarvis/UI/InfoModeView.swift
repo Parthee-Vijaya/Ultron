@@ -254,7 +254,7 @@ struct InfoModeView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("Kilde", selection: $newsSource) {
-                        ForEach(NewsHeadline.Source.allCases) { src in
+                        ForEach(NewsHeadline.Source.infoPanelSources) { src in
                             Text(src.displayName).tag(src)
                         }
                     }

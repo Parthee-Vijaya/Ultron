@@ -3,24 +3,33 @@ import Foundation
 /// One news headline. Source lets the UI render the right badge.
 struct NewsHeadline: Identifiable, Equatable, Codable {
     enum Source: String, Codable, Identifiable, CaseIterable {
-        case dr, tv2, bbc, cnn
+        case dr, tv2, bbc, cnn, reddit, hackernews
         var id: String { rawValue }
         var displayName: String {
             switch self {
-            case .dr: return "DR"
-            case .tv2: return "TV2"
-            case .bbc: return "BBC"
-            case .cnn: return "CNN"
+            case .dr:         return "DR"
+            case .tv2:        return "TV2"
+            case .bbc:        return "BBC"
+            case .cnn:        return "CNN"
+            case .reddit:     return "Reddit"
+            case .hackernews: return "Hacker News"
             }
         }
         var feedURL: URL {
             switch self {
-            case .dr:  return URL(string: "https://www.dr.dk/nyheder/service/feeds/allenyheder")!
-            case .tv2: return URL(string: "https://nyheder.tv2.dk/rss")!
-            case .bbc: return URL(string: "https://feeds.bbci.co.uk/news/world/rss.xml")!
-            case .cnn: return URL(string: "https://rss.cnn.com/rss/edition.rss")!
+            case .dr:         return URL(string: "https://www.dr.dk/nyheder/service/feeds/allenyheder")!
+            case .tv2:        return URL(string: "https://nyheder.tv2.dk/rss")!
+            case .bbc:        return URL(string: "https://feeds.bbci.co.uk/news/world/rss.xml")!
+            case .cnn:        return URL(string: "https://rss.cnn.com/rss/edition.rss")!
+            case .reddit:     return URL(string: "https://www.reddit.com/r/news/.rss")!
+            case .hackernews: return URL(string: "https://hnrss.org/frontpage")!
             }
         }
+
+        /// Sources that show up in the Info-mode segmented picker. Keeps Info
+        /// focused on mainstream news while the Uptodate panel aggregates
+        /// everything (including Reddit + Hacker News).
+        static let infoPanelSources: [Source] = [.dr, .tv2, .bbc, .cnn]
     }
 
     let id: String              // GUID or URL (whichever the feed provides)
@@ -53,6 +62,10 @@ final class NewsService {
     func fetch(source: NewsHeadline.Source, limit: Int = 8) async throws -> [NewsHeadline] {
         var request = URLRequest(url: source.feedURL)
         request.timeoutInterval = 6
+        // Reddit rejects requests without a descriptive User-Agent; a generic
+        // UA also keeps the other feeds happy and avoids CDNs returning 429.
+        request.setValue("Jarvis/\(Constants.appVersion) (macOS menu-bar assistant; github.com/Parthee-Vijaya/JarvisHUD)",
+                         forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "News", code: 1)

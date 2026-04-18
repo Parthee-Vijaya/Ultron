@@ -52,5 +52,15 @@ final class RSSParserTests: XCTestCase {
         XCTAssertEqual(NewsHeadline.Source.tv2.displayName, "TV2")
         XCTAssertEqual(NewsHeadline.Source.bbc.displayName, "BBC")
         XCTAssertEqual(NewsHeadline.Source.cnn.displayName, "CNN")
+        XCTAssertEqual(NewsHeadline.Source.reddit.displayName, "Reddit")
+        XCTAssertEqual(NewsHeadline.Source.hackernews.displayName, "Hacker News")
+    }
+
+    func testInfoPanelSourcesExcludesRedditAndHN() {
+        // The Info-mode segmented picker is intentionally limited to the four
+        // mainstream broadcasters — Reddit + Hacker News live in Uptodate.
+        XCTAssertEqual(NewsHeadline.Source.infoPanelSources, [.dr, .tv2, .bbc, .cnn])
+        XCTAssertFalse(NewsHeadline.Source.infoPanelSources.contains(.reddit))
+        XCTAssertFalse(NewsHeadline.Source.infoPanelSources.contains(.hackernews))
     }
 }
