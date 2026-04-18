@@ -5,6 +5,11 @@ struct InfoModeView: View {
     @Bindable var service: InfoModeService
     let onClose: () -> Void
 
+    @AppStorage(Constants.Defaults.claudeDailyLimitTokens)
+    private var claudeDailyLimit: Int = Constants.ClaudeStats.defaultDailyLimit
+    @AppStorage(Constants.Defaults.claudeWeeklyLimitTokens)
+    private var claudeWeeklyLimit: Int = Constants.ClaudeStats.defaultWeeklyLimit
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -12,6 +17,7 @@ struct InfoModeView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     tilesRow
+                    claudeStatsTile
                     systemTile
                     networkActions
                 }
@@ -146,6 +152,112 @@ struct InfoModeView: View {
                 placeholder("Beregner rute…")
             }
         }
+    }
+
+    // MARK: - Claude Code tile
+
+    private var claudeStatsTile: some View {
+        let s = service.claudeStats
+        return tile(title: "Claude Code", icon: "sparkles", fullWidth: true) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    infoRow("I alt", value: "\(formatTokens(s.totalTokens)) · \(s.totalSessions) sessioner")
+                    infoRow("Seneste", value: latestSessionLine)
+                    if let first = s.firstSessionDate {
+                        infoRow("Siden", value: firstSessionFormatter.string(from: first))
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    infoRow("Daily", value: budgetRow(used: s.todayTokens, limit: claudeDailyLimit))
+                    infoRow("Weekly", value: budgetRow(used: s.weekTokens, limit: claudeWeeklyLimit))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                budgetBar(label: "I dag", used: s.todayTokens, limit: claudeDailyLimit)
+                budgetBar(label: "Denne uge", used: s.weekTokens, limit: claudeWeeklyLimit)
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    /// "620K / 1M" style string used inside the two-column infoRow.
+    private func budgetRow(used: Int, limit: Int) -> String {
+        guard limit > 0 else { return formatTokens(used) }
+        let pct = Int((Double(used) / Double(limit) * 100).rounded())
+        return "\(formatTokens(used)) / \(formatTokens(limit))  (\(pct)%)"
+    }
+
+    private func budgetBar(label: String, used: Int, limit: Int) -> some View {
+        let fraction = limit > 0 ? min(1.0, Double(used) / Double(limit)) : 0
+        let barColor: Color = {
+            if fraction >= 0.9 { return JarvisTheme.criticalGlow }
+            if fraction >= 0.7 { return JarvisTheme.warningGlow }
+            return JarvisTheme.neonCyan
+        }()
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                Spacer()
+                Text(budgetRow(used: used, limit: limit))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(JarvisTheme.surfaceBase.opacity(0.8))
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(barColor)
+                        .frame(width: geo.size.width * CGFloat(fraction), height: 6)
+                        .shadow(color: barColor.opacity(0.6), radius: 3)
+                        .animation(.easeOut(duration: 0.4), value: fraction)
+                }
+            }
+            .frame(height: 6)
+        }
+    }
+
+    private var latestSessionLine: String {
+        let s = service.claudeStats
+        var parts: [String] = [formatTokens(s.latestSessionTokens)]
+        if let model = s.latestSessionModel {
+            parts.append(prettyModel(model))
+        }
+        if let project = s.latestSessionProject {
+            parts.append("· \(project)")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func formatTokens(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1_000 { return String(format: "%.0fK", Double(n) / 1_000) }
+        return String(n)
+    }
+
+    private func prettyModel(_ model: String) -> String {
+        // Turn "claude-opus-4-7" into "Opus 4.7"
+        let lower = model.lowercased()
+        if let match = lower.range(of: #"(opus|sonnet|haiku)-(\d+)-(\d+)"#, options: .regularExpression) {
+            let chunk = String(lower[match])
+            let parts = chunk.split(separator: "-")
+            if parts.count >= 3 {
+                return "\(parts[0].capitalized) \(parts[1]).\(parts[2])"
+            }
+        }
+        return model
+    }
+
+    private var firstSessionFormatter: DateFormatter {
+        let df = DateFormatter()
+        df.dateFormat = "d. MMM yyyy"
+        df.locale = Locale(identifier: "da_DK")
+        return df
     }
 
     // MARK: - System tile

@@ -3,7 +3,7 @@ import AVFoundation
 enum Constants {
     // MARK: - App
     static let appName = "Jarvis"
-    static let appVersion = "4.2.0"
+    static let appVersion = "4.3.0"
     static let bundleID = "pavi.Jarvis"
 
     // MARK: - Keychain
@@ -81,6 +81,17 @@ enum Constants {
         static let chatFrameH = "chatFrameH"
         static let wakeWordEnabled = "wakeWordEnabled"
         static let hudStyle = "hudStyle"
+        static let claudeDailyLimitTokens = "claudeDailyLimitTokens"
+        static let claudeWeeklyLimitTokens = "claudeWeeklyLimitTokens"
+    }
+
+    // MARK: - Claude Code defaults
+    enum ClaudeStats {
+        /// Default daily budget shown in the Info panel when the user hasn't set one.
+        /// 1 M tokens is a rough placeholder for "an intense day".
+        static let defaultDailyLimit = 1_000_000
+        /// Default weekly budget. Free/Pro users can override in Settings.
+        static let defaultWeeklyLimit = 5_000_000
     }
 
     // MARK: - Notch HUD dimensions

@@ -20,6 +20,7 @@ final class InfoModeService {
     private(set) var commute: CommuteEstimate?
     private(set) var commuteError: String?
     private(set) var systemInfo: SystemInfoSnapshot = SystemInfoSnapshot()
+    private(set) var claudeStats: ClaudeStatsSnapshot = .empty
 
     // Async-action state for the manual buttons
     private(set) var isRunningSpeedtest = false
@@ -30,6 +31,7 @@ final class InfoModeService {
     private let newsService = NewsService()
     private let commuteService = CommuteService()
     private let systemInfoService = SystemInfoService()
+    private let claudeStatsService = ClaudeStatsService()
 
     init(locationService: LocationService) {
         self.locationService = locationService
@@ -46,12 +48,14 @@ final class InfoModeService {
         async let weatherResult: WeatherSnapshot? = loadWeather()
         async let drResult: [NewsHeadline] = (try? await newsService.fetch(source: .dr, limit: 3)) ?? []
         async let commuteResult = loadCommute()
+        async let claudeResult = claudeStatsService.fetch()
 
-        let (sys, w, news, com) = await (sysBasics, weatherResult, drResult, commuteResult)
+        let (sys, w, news, com, claude) = await (sysBasics, weatherResult, drResult, commuteResult, claudeResult)
 
         self.systemInfo = sys
         self.weather = w
         self.drHeadlines = news
+        self.claudeStats = claude
         switch com {
         case .success(let est): self.commute = est; self.commuteError = nil
         case .failure(let msg): self.commute = nil; self.commuteError = msg

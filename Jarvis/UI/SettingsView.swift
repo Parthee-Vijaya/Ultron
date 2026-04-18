@@ -20,6 +20,10 @@ struct SettingsView: View {
     @AppStorage("ttsEnabled") private var ttsEnabled = false
     @AppStorage(Constants.Defaults.wakeWordEnabled) private var wakeWordEnabled = false
     @AppStorage(Constants.Defaults.hudStyle) private var hudStyleRaw: String = HUDStylePreference.auto.rawValue
+    @AppStorage(Constants.Defaults.claudeDailyLimitTokens)
+    private var claudeDailyLimit: Int = Constants.ClaudeStats.defaultDailyLimit
+    @AppStorage(Constants.Defaults.claudeWeeklyLimitTokens)
+    private var claudeWeeklyLimit: Int = Constants.ClaudeStats.defaultWeeklyLimit
     @State private var porcupineKey = ""
     @State private var wakeWordStatus: String?
     @State private var homeAddress: String = ""
@@ -262,6 +266,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             hudStyleSection
+            claudeLimitsSection
             locationSection
             GroupBox {
                 HStack {
@@ -276,6 +281,53 @@ struct SettingsView: View {
             Spacer()
         }
         .padding()
+    }
+
+    private var claudeLimitsSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Claude Code budget").fontWeight(.medium)
+                HStack {
+                    Text("Daily").frame(width: 70, alignment: .leading).foregroundStyle(.secondary)
+                    tokenStepper(value: $claudeDailyLimit, step: 250_000)
+                }
+                HStack {
+                    Text("Ugentlig").frame(width: 70, alignment: .leading).foregroundStyle(.secondary)
+                    tokenStepper(value: $claudeWeeklyLimit, step: 1_000_000)
+                }
+                Text("Bruges af Info mode (⌥I) til at vise en progress-bar for dine Claude Code tokens. Sæt dem så de matcher din plan.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func tokenStepper(value: Binding<Int>, step: Int) -> some View {
+        HStack(spacing: 6) {
+            TextField("", value: value, formatter: Self.integerFormatter)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 110)
+            Text("tokens").font(.caption).foregroundStyle(.secondary)
+            Stepper("", value: value, in: 100_000...100_000_000, step: step)
+                .labelsHidden()
+            Spacer()
+            Text(formatTokensShort(value.wrappedValue))
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private static let integerFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        f.allowsFloats = false
+        return f
+    }()
+
+    private func formatTokensShort(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1_000 { return String(format: "%dK", n / 1_000) }
+        return String(n)
     }
 
     private var locationSection: some View {
