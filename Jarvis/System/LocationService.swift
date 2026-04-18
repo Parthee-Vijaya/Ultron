@@ -108,6 +108,12 @@ final class LocationService: NSObject {
         }
     }
 
+    /// Hardcoded coordinate for the owner's home city. Used as a last-resort
+    /// fallback so the Vejr + Sol tiles always paint something sensible, even
+    /// when CoreLocation is blocked and CLGeocoder is unreachable.
+    static let naestvedCoordinate = CLLocationCoordinate2D(latitude: 55.2306, longitude: 11.7610)
+    static let naestvedLabel = "Næstved"
+
     /// Like `refresh()` but also awaits reverse-geocoding so the returned label is
     /// the actual city name (not "Din lokation"). Falls back to the previous name
     /// if geocoding fails.
@@ -122,7 +128,11 @@ final class LocationService: NSObject {
 
     private func reverseGeocodeAwait(_ coordinate: CLLocationCoordinate2D) async -> String? {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let placemarks = try? await CLGeocoder().reverseGeocodeLocation(location)
+        // CLGeocoder can silently hang / be rate-limited — wrap in a 3-s timeout
+        // so Info-mode's weather tile doesn't sit on "Henter vejr…" forever.
+        let placemarks = await Self.withTimeout(seconds: 3) {
+            try await CLGeocoder().reverseGeocodeLocation(location)
+        }
         let name = placemarks?.first?.locality
             ?? placemarks?.first?.subLocality
             ?? placemarks?.first?.name
@@ -133,17 +143,35 @@ final class LocationService: NSObject {
         return nil
     }
 
-    /// Resolve a manual city string to a coordinate via CLGeocoder.
+    /// Resolve a manual city / address string to a coordinate via CLGeocoder.
+    /// Wrapped in a 4-s timeout so a stuck geocode doesn't pin the whole panel.
     func geocodeManual(_ city: String) async -> (CLLocationCoordinate2D, String)? {
-        do {
-            let placemarks = try await CLGeocoder().geocodeAddressString(city)
-            guard let placemark = placemarks.first,
-                  let location = placemark.location else { return nil }
-            let name = placemark.locality ?? placemark.name ?? city
-            return (location.coordinate, name)
-        } catch {
-            LoggingService.shared.log("Manual geocode failed for '\(city)': \(error)", level: .warning)
+        let placemarks = await Self.withTimeout(seconds: 4) {
+            try await CLGeocoder().geocodeAddressString(city)
+        }
+        guard let placemark = placemarks?.first,
+              let location = placemark.location else {
             return nil
+        }
+        let name = placemark.locality ?? placemark.name ?? city
+        return (location.coordinate, name)
+    }
+
+    /// Races `operation` against a `seconds`-second sleep. Returns nil on
+    /// timeout or any thrown error. Used to tame CLGeocoder, which has no
+    /// built-in timeout and can hang arbitrarily.
+    private static func withTimeout<T>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask {
+                try? await operation()
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
         }
     }
 

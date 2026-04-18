@@ -227,7 +227,13 @@ final class InfoModeService {
            let (coord, label) = await locationService.geocodeManual(home) {
             return try? await weatherService.fetch(for: coord, locationLabel: label)
         }
-        return nil
+        // 4. Last-resort: hit the open-meteo API with Næstved's hardcoded
+        //    coordinate. Geocoding may have hung/failed/been rate-limited,
+        //    but the weather API itself has no such dependency.
+        return try? await weatherService.fetch(
+            for: LocationService.naestvedCoordinate,
+            locationLabel: LocationService.naestvedLabel
+        )
     }
 
     enum CommuteLoadResult {

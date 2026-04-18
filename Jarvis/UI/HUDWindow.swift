@@ -278,7 +278,7 @@ class HUDWindowController {
         let hostingController = NSHostingController(rootView: view)
         hostingController.sizingOptions = .preferredContentSize
 
-        let panel = NSPanel(contentViewController: hostingController)
+        let panel = JarvisKeyablePanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
         panel.level = .floating
         panel.isOpaque = false
@@ -314,7 +314,7 @@ class HUDWindowController {
         let hostingController = NSHostingController(rootView: view)
         hostingController.sizingOptions = .preferredContentSize
 
-        let panel = NSPanel(contentViewController: hostingController)
+        let panel = JarvisKeyablePanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
         panel.level = .floating
         panel.isOpaque = false
