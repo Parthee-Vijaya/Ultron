@@ -115,59 +115,52 @@ struct InfoModeView: View {
         HStack(alignment: .top, spacing: 12) {
             airQualityTile
             moonTile
-            calendarTile
+            trafficInfoTile
         }
     }
 
-    private var calendarTile: some View {
-        tile(title: "Kalender", icon: "calendar") {
-            switch service.calendarAccess {
-            case .granted:
-                if let event = service.nextEvent {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(event.title)
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                        Text(event.prettyStart)
-                            .font(.caption)
-                            .foregroundStyle(Color.white)
-                        if let minutes = event.minutesUntilStart, minutes > 0 {
-                            Text("om \(minutes) min")
-                                .font(.caption)
-                                .foregroundStyle(Color.white.opacity(0.7))
-                        }
-                        if let location = event.location, !location.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .font(.caption)
-                                Text(location)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Color.white.opacity(0.55))
-                        }
+    /// Live Vejdirektoratet events, promoted out of the Hjem tile and
+    /// given its own top-level slot in the 3-column grid. Shows up to 3
+    /// events inside the compact tile footprint + a header row with
+    /// source + "nær dig" / "på ruten" scope badge.
+    private var trafficInfoTile: some View {
+        tile(title: trafficTileTitle, icon: "exclamationmark.triangle.fill") {
+            if !service.trafficEvents.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(service.trafficEvents.prefix(3)) { event in
+                        trafficEventRow(event)
                     }
-                } else {
-                    Text("Ingen events de næste 7 dage")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.6))
-                }
-            case .notDetermined:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Giv adgang til din kalender for at se næste event her.")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.7))
-                    Button("Giv adgang") {
-                        Task { await service.requestCalendarAccess() }
+                    if service.trafficEvents.count > 3 {
+                        Text("+\(service.trafficEvents.count - 3) flere")
+                            .font(.caption2)
+                            .foregroundStyle(Color.white.opacity(0.5))
                     }
-                    .controlSize(.small)
+                    Text("Kilde: Vejdirektoratet")
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.4))
+                        .padding(.top, 2)
                 }
-            case .denied, .writeOnly:
-                Text("Kalender-adgang blokeret i System-indstillinger.")
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.55))
+            } else if service.lastRefresh != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(service.trafficEventsScope == .route
+                         ? "Ingen aktuelle hændelser på ruten."
+                         : "Ingen aktuelle hændelser i nærheden.")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.65))
+                    Text("Kilde: Vejdirektoratet")
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.4))
+                }
+            } else {
+                placeholder("Henter trafikinfo…")
             }
+        }
+    }
+
+    private var trafficTileTitle: String {
+        switch service.trafficEventsScope {
+        case .nearby: return "Trafikinfo nær dig"
+        case .route:  return "Trafikinfo på ruten"
         }
     }
 
@@ -458,34 +451,31 @@ struct InfoModeView: View {
 
     private var commuteTile: some View {
         tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
-            // Horizontal split, laid out per the user's sketch:
-            //   Left  — Pinnede destinationer (stacked) + Live-trafik chip
-            //           + Trafikinfo section + input row. Flexible width.
-            //   Right — "0 min til X" stats on TOP, then the map below.
-            //           Fixed 340pt wide so stats + map stay prominent.
+            // Horizontal split after Trafikinfo got its own top-level tile.
+            // The remaining Hjem content rebalances across two columns:
+            //   Left  — Pinnede destinationer (stacked) + "0 min til X"
+            //           stats + Live-trafik chip + input row.
+            //   Right — Map with charger legend, fills column height.
             HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     pinnedDestinationsRow
+                    commuteStatsColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     commuteChipsRow
-                    trafficEventsSection
                     destinationInputRow
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    commuteStatsColumn
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    commuteMapColumn
-                }
-                .frame(width: 340)
+                commuteMapColumn
+                    .frame(width: 340)
+                    .frame(maxHeight: .infinity)
             }
         }
     }
 
-    /// Map + charger legend. Fixed 255pt tall (25% shorter than the
-    /// previous 340pt so the whole tile fits on a laptop screen without
-    /// scrolling) — the map is still zoomable, so lost area can be
-    /// recovered interactively.
+    /// Map + charger legend. Fills all vertical space the left column
+    /// consumes, so there's no deadspace below the map regardless of how
+    /// tall the pinned/stats/chips/input stack ends up.
     @ViewBuilder
     private var commuteMapColumn: some View {
         if let commute = service.commute, !commute.routeCoordinates.isEmpty {
@@ -496,8 +486,7 @@ struct InfoModeView: View {
                     coordinates: commute.routeCoordinates,
                     chargers: service.chargers
                 )
-                .frame(maxWidth: .infinity)
-                .frame(height: 255)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -507,10 +496,8 @@ struct InfoModeView: View {
                     chargerLegend
                 }
             }
+            .frame(minHeight: 260)
         } else {
-            // Placeholder keeps the column reserved while the route is
-            // still computing — otherwise the left column would reflow
-            // to full-width mid-refresh.
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.white.opacity(0.04))
                 .overlay(
@@ -525,7 +512,8 @@ struct InfoModeView: View {
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
                 )
-                .frame(height: 255)
+                .frame(minHeight: 260)
+                .frame(maxHeight: .infinity)
         }
     }
 
