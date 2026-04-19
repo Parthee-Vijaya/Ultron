@@ -9,10 +9,9 @@ import SwiftUI
 /// built-in match for the sci-fi-tech feel of the source design; a custom
 /// Orbitron / Michroma face could come later if we want a closer match).
 struct JarvisWordmark: View {
-    /// Font size of the wordmark letters. 17pt is the previous 14pt + 20%
-    /// bump; the whole mark scales off this, so changing one number still
-    /// works if future callers want a hero-sized placement.
-    var fontSize: CGFloat = 17
+    /// Font size of the wordmark letters. 21pt is the previous 17pt + 25%.
+    /// Whole mark scales off this so a hero-sized placement is a one-liner.
+    var fontSize: CGFloat = 21
 
     /// Breathing-pulse driver. On = dim + slightly smaller; off = bright +
     /// full size. 1.8s ease-in-out auto-reversed so the rhythm reads as a
@@ -21,7 +20,7 @@ struct JarvisWordmark: View {
 
     var body: some View {
         Text("J.A.R.V.I.S")
-            .font(.system(size: fontSize, weight: .semibold))
+            .font(.system(size: fontSize, weight: .bold))
             .kerning(fontSize * 0.14)
             .foregroundStyle(Color.white)
             .fixedSize(horizontal: true, vertical: true)
