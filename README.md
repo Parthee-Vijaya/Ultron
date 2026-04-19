@@ -67,6 +67,16 @@ A lighter "what's in the world today" surface with six parallel news sources (DR
 
 Anthropic prompt caching (`cache_control: ephemeral`) is active on agent-mode system prompts — roughly 2× cost reduction on long tool loops.
 
+### Empty-state greetings
+
+Every fresh chat lands on a rotating one-liner — movie quotes, sci-fi nods, and a few Jarvis-specific jabs — so opening the app doesn't feel sterile. `GreetingProvider` picks a line at random per session; the wordmark-vs-sparkle icon choice rotates too.
+
+<p align="center">
+  <img src="docs/screenshots/chat-greeting-wordmark.png" width="380" alt="J.A.R.V.I.S wordmark + Welcome to the party, pal." />
+  <img src="docs/screenshots/chat-greeting-self-destruct.png" width="380" alt="This message will self-destruct in five seconds… medmindre du sender et svar." />
+  <img src="docs/screenshots/chat-greeting-gemini.png" width="380" alt="I eat Gemini for breakfast." />
+</p>
+
 ## Tech stack
 
 | Component | Technology |
