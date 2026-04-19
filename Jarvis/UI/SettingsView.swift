@@ -310,6 +310,7 @@ struct SettingsAPIKeysPane: View {
 
 struct SettingsHUDPane: View {
     @AppStorage("ttsEnabled") private var ttsEnabled = false
+    @AppStorage(Constants.Defaults.respectFocusMode) private var respectFocusMode: Bool = true
 
     var body: some View {
         SettingsPane(
@@ -319,6 +320,12 @@ struct SettingsHUDPane: View {
             SettingsCard(title: "Tale") {
                 Toggle("Læs HUD-svar op (Text-to-Speech)", isOn: $ttsEnabled)
                 Text("Når aktiveret læser Jarvis Q&A- og Vision-svar op med systemets stemmesyntese.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            SettingsCard(title: "Fokus") {
+                Toggle("Respekter Focus Mode / skærm-lås", isOn: $respectFocusMode)
+                Text("Auto-pop HUD er stille mens skærmen er låst eller sovende.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

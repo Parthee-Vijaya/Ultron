@@ -73,6 +73,12 @@ final class SpotlightIndexer {
         attrs.contentDescription = Self.shortPreview(of: conversation)
         attrs.keywords = Self.keywords(for: conversation)
         attrs.contentModificationDate = conversation.updatedAt
+        // contentURL lets Spotlight render a "visit" affordance; the actual
+        // deep-link routing goes through NSUserActivity / CSSearchableItem
+        // handler in AppDelegate.application(_:continue:) — but setting this
+        // makes Quick Look previews point at our app instead of a plaintext
+        // dead-end.
+        attrs.contentURL = URL(string: "jarvis://conversation?id=\(conversation.id.uuidString)")
         return attrs
     }
 

@@ -1,4 +1,5 @@
 import AppKit
+import CoreSpotlight
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -42,6 +43,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// `handleChatVoiceToggle` push dictation transcripts back into the UI.
     private let chatInputBuffer = ChatInputBuffer()
     let locationService = LocationService()
+    /// v1.4: observes screen-lock / display-sleep so the HUD can suppress
+    /// auto-pop surfaces while the user is away. Instantiated once and kept
+    /// for the app's lifetime.
+    private let focusObserver = FocusModeObserver()
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
     lazy var errorPresenter = ErrorPresenter(hudController: hudController)
@@ -164,9 +169,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             hudController.showInfoMode()
         case "briefing", "uptodate":
             hudController.showUptodate()
+        case "conversation":
+            // Spotlight hit or explicit jarvis://conversation?id=UUID —
+            // open the chat window and load the requested transcript.
+            guard let idString = components?.queryItems?.first(where: { $0.name == "id" })?.value,
+                  let uuid = UUID(uuidString: idString) else {
+                LoggingService.shared.log("jarvis://conversation missing id", level: .warning)
+                return
+            }
+            refreshConversationHistory()
+            hudController.showChat()
+            loadConversationIntoChat(id: uuid)
         default:
             LoggingService.shared.log("Unknown jarvis:// action: \(action)", level: .warning)
         }
+    }
+
+    /// Spotlight taps arrive as an `NSUserActivity` of type
+    /// `CSSearchableItemActionType`, not as a `jarvis://` URL — AppKit
+    /// routes them here. Pull the conversation UUID out of the activity
+    /// userInfo (`CSSearchableItemActivityIdentifier`) and open the chat.
+    nonisolated func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                                 restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == CSSearchableItemActionType,
+              let idString = userActivity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+              let uuid = UUID(uuidString: idString) else {
+            return false
+        }
+        MainActor.assumeIsolated {
+            refreshConversationHistory()
+            hudController.showChat()
+            loadConversationIntoChat(id: uuid)
+        }
+        return true
     }
 
     // MARK: - Pipeline Setup
@@ -190,6 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Wire the Uptodate + Info panel data sources.
         hudController.updatesService = updatesService
         hudController.infoModeService = infoModeService
+        hudController.focusObserver = focusObserver
 
         pipeline = RecordingPipeline(
             audioCapture: audioCapture,

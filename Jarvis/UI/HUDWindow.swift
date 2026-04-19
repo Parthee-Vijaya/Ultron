@@ -19,6 +19,9 @@ class HUDWindowController {
     var updatesService: UpdatesService?
     /// Set by AppDelegate once services exist, then passed into InfoModeView.
     var infoModeService: InfoModeService?
+    /// Set by AppDelegate once services exist. When nil, focus suppression
+    /// is a no-op (defensive — lets the app run even if wiring regresses).
+    var focusObserver: FocusModeObserver?
     var onAgentChatSend: ((String) -> Void)?
     var onAgentApprove: (() -> Void)?
     var onAgentReject: (() -> Void)?
@@ -69,7 +72,20 @@ class HUDWindowController {
         hudState.currentStep = kind.map { ProcessingStep($0) }
     }
 
+    /// Returns true when the user has the setting ON *and* the system
+    /// currently reports itself as quiet. Treats a missing default as ON
+    /// so first-launch users get sensible behaviour.
+    private func shouldSuppressAutoPop() -> Bool {
+        let respect = UserDefaults.standard.object(forKey: Constants.Defaults.respectFocusMode) as? Bool ?? true
+        guard respect else { return false }
+        return focusObserver?.isQuiet == true
+    }
+
     func showResult(_ text: String) {
+        if shouldSuppressAutoPop() {
+            LoggingService.shared.log("HUD suppressed — focus mode / screen locked")
+            return
+        }
         cancelRecordingTimer()
         hudState.currentPhase = .result(text: text)
         if panel == nil { presentPanel() }
@@ -77,6 +93,10 @@ class HUDWindowController {
     }
 
     func showConfirmation(_ message: String) {
+        if shouldSuppressAutoPop() {
+            LoggingService.shared.log("HUD suppressed — focus mode / screen locked")
+            return
+        }
         cancelRecordingTimer()
         hudState.currentPhase = .confirmation(message: message)
         if panel == nil { presentPanel() }
@@ -89,6 +109,10 @@ class HUDWindowController {
     var onErrorRetryRequested: (() -> Void)?
 
     func showError(_ message: String, retryHandler: (() -> Void)? = nil) {
+        if shouldSuppressAutoPop() {
+            LoggingService.shared.log("HUD suppressed — focus mode / screen locked")
+            return
+        }
         cancelRecordingTimer()
         onErrorRetryRequested = retryHandler
         hudState.currentPhase = .error(message: message)
@@ -97,6 +121,10 @@ class HUDWindowController {
     }
 
     func showPermissionError(permission: String, instructions: String) {
+        if shouldSuppressAutoPop() {
+            LoggingService.shared.log("HUD suppressed — focus mode / screen locked")
+            return
+        }
         cancelRecordingTimer()
         hudState.currentPhase = .permissionError(permission: permission, instructions: instructions)
         if panel == nil { presentPanel() }

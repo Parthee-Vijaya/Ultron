@@ -111,6 +111,11 @@ enum Constants {
         /// v1.1.7: newline-separated list of additional program names the user
         /// trusts for `run_shell` beyond the built-in defaults.
         static let shellCommandWhitelist = "shellCommandWhitelist"
+        /// v1.4: when true (default) HUDWindowController suppresses auto-pop
+        /// surfaces (showResult/showError/showConfirmation/showPermissionError)
+        /// while the system reports itself as quiet (screen locked or display
+        /// asleep). Push-to-talk + user-opened panels always bypass this.
+        static let respectFocusMode = "respectFocusMode"
     }
 
     // MARK: - Claude Code defaults

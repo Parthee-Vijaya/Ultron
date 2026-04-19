@@ -14,7 +14,8 @@ enum BuiltInModes {
         isBuiltIn: true,
         icon: "mic.fill",
         inputKind: .voice,
-        persistToNotes: true
+        persistToNotes: true,
+        preferLocalTranscription: true
     )
 
     static let vibeCode = Mode(

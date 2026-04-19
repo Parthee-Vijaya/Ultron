@@ -78,6 +78,78 @@ struct OpenBriefingIntent: AppIntent {
     }
 }
 
+/// v1.2.2: 6-second fixed voice window, transcript copied to the system
+/// pasteboard. Bypasses the paste/Notes dual-persist of the hotkey-driven
+/// dictation path so Shortcut/Siri callers only get the clipboard side-effect.
+@available(macOS 13.0, *)
+struct DictateToClipboardIntent: AppIntent {
+    static let title: LocalizedStringResource = "Dictate to Clipboard"
+    static let description = IntentDescription("Diktér i 6 sekunder og kopiér teksten til udklipsholderen.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        // Make sure the HUD banner is visible while recording — users need a
+        // visual cue that the mic is hot even when Siri/Shortcut triggered this.
+        try await openJarvis(action: "dictate-clipboard", prompt: "")
+        guard let delegate = NSApp.delegate as? AppDelegate else {
+            return .result(value: "")
+        }
+        let transcript = await delegate.dictateToClipboard(seconds: 6)
+        return .result(value: transcript)
+    }
+}
+
+/// v1.2.2: fetch a URL, strip HTML, 3-bullet summary via Gemini summarize mode.
+/// Returns the summary as a plain string so Shortcuts can pipe it into
+/// e.g. a Notes block or a Reminder.
+@available(macOS 13.0, *)
+struct SummarizeURLIntent: AppIntent {
+    static let title: LocalizedStringResource = "Summarize URL"
+    static let description = IntentDescription("Hent en URL, opsummer i 3 bullet points.")
+    static let openAppWhenRun: Bool = true
+
+    @Parameter(title: "URL", description: "Webadressen der skal opsummeres.")
+    var url: URL
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        guard let delegate = NSApp.delegate as? AppDelegate else {
+            return .result(value: "")
+        }
+        let summary = try await delegate.summarizeURL(url)
+        return .result(value: "\(summary)\n\nKilde: \(url.absoluteString)")
+    }
+}
+
+/// v1.2.2: compose `Context + Question` prompt → Gemini chat mode → reply text.
+/// Synchronous one-shot — doesn't route through ChatPipeline because Shortcuts
+/// needs a single completed string, not a streaming render.
+@available(macOS 13.0, *)
+struct AskWithContextIntent: AppIntent {
+    static let title: LocalizedStringResource = "Ask Jarvis with context"
+    static let description = IntentDescription("Stil et spørgsmål om medfølgende tekst.")
+    static let openAppWhenRun: Bool = true
+
+    @Parameter(title: "Context", description: "Teksten Jarvis skal arbejde med.")
+    var selectedText: String
+
+    @Parameter(title: "Question", description: "Dit spørgsmål om teksten.")
+    var question: String
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        guard let delegate = NSApp.delegate as? AppDelegate else {
+            return .result(value: "")
+        }
+        let reply = try await delegate.askWithContext(
+            selectedText: selectedText,
+            question: question
+        )
+        return .result(value: reply)
+    }
+}
+
 /// Builds and opens a `jarvis://` URL. AppIntents can't directly call into
 /// the app's main-actor state because they might run when the app isn't
 /// active; routing through the URL handler guarantees the app is launched
@@ -138,6 +210,33 @@ struct JarvisAppShortcuts: AppShortcutsProvider {
             phrases: ["Open \(.applicationName) Briefing"],
             shortTitle: "Briefing",
             systemImageName: "newspaper"
+        )
+        AppShortcut(
+            intent: DictateToClipboardIntent(),
+            phrases: [
+                "Dictate to clipboard with \(.applicationName)",
+                "Diktér til udklipsholder med \(.applicationName)"
+            ],
+            shortTitle: "Dictate → Clipboard",
+            systemImageName: "doc.on.clipboard"
+        )
+        AppShortcut(
+            intent: SummarizeURLIntent(),
+            phrases: [
+                "Summarize URL with \(.applicationName)",
+                "Opsummer URL med \(.applicationName)"
+            ],
+            shortTitle: "Summarize URL",
+            systemImageName: "link.badge.plus"
+        )
+        AppShortcut(
+            intent: AskWithContextIntent(),
+            phrases: [
+                "Ask \(.applicationName) with context",
+                "Spørg \(.applicationName) med kontekst"
+            ],
+            shortTitle: "Ask with context",
+            systemImageName: "text.bubble"
         )
     }
 }

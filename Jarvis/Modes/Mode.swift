@@ -72,6 +72,14 @@ struct Mode: Identifiable, Codable, Equatable {
     /// so transcriptions have a persistent record. Older custom modes
     /// default to false.
     var persistToNotes: Bool
+    /// v1.4: opt-in for local WhisperKit transcription instead of Gemini-
+    /// audio. Dictation-style paste modes tolerate local STT (output is
+    /// plain text at cursor); HUD-centric modes like Q&A/Vision fail hard
+    /// on noisy transcription and should keep Gemini-audio. Routing used
+    /// to key off `outputType == .paste` which made new output types
+    /// brittle — an explicit flag is cleaner. Older custom modes decode
+    /// as false, so no behavior change on upgrade.
+    var preferLocalTranscription: Bool
 
     init(
         id: UUID,
@@ -86,7 +94,8 @@ struct Mode: Identifiable, Codable, Equatable {
         agentTools: Bool = false,
         icon: String = "sparkles",
         inputKind: InputKind = .text,
-        persistToNotes: Bool = false
+        persistToNotes: Bool = false,
+        preferLocalTranscription: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -101,11 +110,12 @@ struct Mode: Identifiable, Codable, Equatable {
         self.icon = icon
         self.inputKind = inputKind
         self.persistToNotes = persistToNotes
+        self.preferLocalTranscription = preferLocalTranscription
     }
 
     // Custom Codable so older JSON files (v3.0 custom modes without `webSearch`) decode cleanly.
     private enum CodingKeys: String, CodingKey {
-        case id, name, systemPrompt, model, outputType, maxTokens, isBuiltIn, webSearch, provider, agentTools, icon, inputKind, persistToNotes
+        case id, name, systemPrompt, model, outputType, maxTokens, isBuiltIn, webSearch, provider, agentTools, icon, inputKind, persistToNotes, preferLocalTranscription
     }
 
     init(from decoder: Decoder) throws {
@@ -123,6 +133,7 @@ struct Mode: Identifiable, Codable, Equatable {
         icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "sparkles"
         inputKind = try c.decodeIfPresent(InputKind.self, forKey: .inputKind) ?? .text
         persistToNotes = try c.decodeIfPresent(Bool.self, forKey: .persistToNotes) ?? false
+        preferLocalTranscription = try c.decodeIfPresent(Bool.self, forKey: .preferLocalTranscription) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -140,6 +151,7 @@ struct Mode: Identifiable, Codable, Equatable {
         try c.encode(icon, forKey: .icon)
         try c.encode(inputKind, forKey: .inputKind)
         try c.encode(persistToNotes, forKey: .persistToNotes)
+        try c.encode(preferLocalTranscription, forKey: .preferLocalTranscription)
     }
 
     static func == (lhs: Mode, rhs: Mode) -> Bool {

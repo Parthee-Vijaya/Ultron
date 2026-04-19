@@ -212,7 +212,10 @@ class RecordingPipeline {
         // query → refuse-to-answer failures. This preserves v1.2 behaviour
         // for those modes.
         let result: Result<String, Error>
-        let preferLocal = mode.outputType == .paste
+        // v1.4: explicit flag beats "outputType == .paste" proxy. Falls back
+        // to the old proxy for legacy Mode JSON that was decoded before the
+        // flag existed — older custom modes still behave identically.
+        let preferLocal = mode.preferLocalTranscription || mode.outputType == .paste
 
         if preferLocal, let text = await transcribeLocally(audioData), !text.isEmpty {
             LoggingService.shared.log("Local transcript (\(text.count) chars) [\(mode.name)]: \(text.prefix(80))…")
