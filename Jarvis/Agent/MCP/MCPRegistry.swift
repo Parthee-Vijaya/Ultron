@@ -1,4 +1,51 @@
 import Foundation
+import Observation
+
+/// Live status for a single MCP server. Surfaced via `MCPRegistryState` so the
+/// Settings pane can render status chips without polling the registry itself.
+@MainActor
+struct MCPServerStatus: Identifiable, Equatable {
+    enum ConnectionState: Equatable {
+        case starting
+        case running(toolCount: Int)
+        case crashed(String)
+        case stopped
+    }
+
+    let name: String
+    var command: String
+    var args: [String]
+    var env: [String: String]
+    var state: ConnectionState
+    var id: String { name }
+}
+
+/// Sidecar observable state for `MCPRegistry`. Kept as a separate class so the
+/// registry itself can stay free of `@Observable` macro overhead while the UI
+/// still gets diff-based updates when statuses change.
+@MainActor
+@Observable
+final class MCPRegistryState {
+    var servers: [MCPServerStatus] = []
+
+    /// Upserts a status entry. Preserves list ordering on updates.
+    func upsert(_ status: MCPServerStatus) {
+        if let idx = servers.firstIndex(where: { $0.name == status.name }) {
+            servers[idx] = status
+        } else {
+            servers.append(status)
+        }
+    }
+
+    func remove(name: String) {
+        servers.removeAll { $0.name == name }
+    }
+
+    func setState(name: String, to state: MCPServerStatus.ConnectionState) {
+        guard let idx = servers.firstIndex(where: { $0.name == name }) else { return }
+        servers[idx].state = state
+    }
+}
 
 /// Reads `~/.jarvis/mcp.json`, spawns each configured MCP server, and adapts
 /// its `tools/list` entries into `AgentTool` instances registered with
@@ -7,6 +54,11 @@ import Foundation
 @MainActor
 final class MCPRegistry {
     static let shared = MCPRegistry()
+
+    /// Exposed for the Settings MCP pane. Mutated from `startServer`,
+    /// `requestRestart`, `shutdown`, and the termination callback wired into
+    /// each `MCPClient`.
+    let state = MCPRegistryState()
 
     private var clients: [String: MCPClient] = [:]
     /// v1.4 Fase 4 slice: track each server's restart attempts so a
@@ -34,6 +86,18 @@ final class MCPRegistry {
         }
 
         serverConfigs = config.servers
+        // Seed the observable state with a .starting entry for each server so
+        // the UI shows a yellow chip immediately, before the async spawn even
+        // begins.
+        for (name, server) in config.servers {
+            state.upsert(MCPServerStatus(
+                name: name,
+                command: server.command,
+                args: server.args ?? [],
+                env: server.env ?? [:],
+                state: .starting
+            ))
+        }
         for (name, server) in config.servers {
             await startServer(name: name, server: server)
         }
@@ -49,10 +113,12 @@ final class MCPRegistry {
         let attempts = restartAttempts[name, default: 0]
         guard attempts < maxRestartAttempts else {
             LoggingService.shared.log("MCP server '\(name)' exceeded \(maxRestartAttempts) restart attempts — giving up", level: .error)
+            state.setState(name: name, to: .crashed("Gav op efter \(maxRestartAttempts) genstarter"))
             return
         }
         restartAttempts[name] = attempts + 1
         LoggingService.shared.log("MCP server '\(name)' restarting (attempt \(attempts + 1)/\(maxRestartAttempts))", level: .warning)
+        state.setState(name: name, to: .starting)
         clients[name]?.shutdown()
         clients.removeValue(forKey: name)
         // Exponential backoff — 1s, 2s, 4s. Prevents hammering a flaky
@@ -66,17 +132,63 @@ final class MCPRegistry {
     func shutdown() {
         for client in clients.values { client.shutdown() }
         clients.removeAll()
+        for status in state.servers {
+            state.setState(name: status.name, to: .stopped)
+        }
+    }
+
+    // MARK: - Save / reload (Settings MCP pane)
+
+    /// Persist a fresh server map to `~/.jarvis/mcp.json` (pretty-printed) and
+    /// reload the registry. Creates the `.jarvis` dir if it doesn't exist yet.
+    func save(servers: [String: MCPConfig.Server]) async throws {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".jarvis", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let url = dir.appendingPathComponent("mcp.json")
+        let config = MCPConfig(servers: servers)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(config)
+        try data.write(to: url, options: .atomic)
+        await reload()
+    }
+
+    /// Shut down every running server and re-bootstrap from disk. Used when
+    /// the user taps "Genindlæs alle" in Settings, or internally by `save(...)`.
+    func reload() async {
+        shutdown()
+        state.servers.removeAll()
+        restartAttempts.removeAll()
+        serverConfigs.removeAll()
+        await bootstrap()
     }
 
     // MARK: - Per-server startup
 
     private func startServer(name: String, server: MCPConfig.Server) async {
+        // Ensure there's a status entry — `bootstrap` seeds one but
+        // `requestRestart` calls here without going through bootstrap.
+        state.upsert(MCPServerStatus(
+            name: name,
+            command: server.command,
+            args: server.args ?? [],
+            env: server.env ?? [:],
+            state: .starting
+        ))
         do {
             let client = try MCPClient(
                 name: name,
                 command: server.command,
                 args: server.args ?? [],
-                env: server.env ?? [:]
+                env: server.env ?? [:],
+                onTermination: { [weak self] name in
+                    guard let self else { return }
+                    self.state.setState(name: name, to: .crashed("Proces lukkede"))
+                    Task { await self.requestRestart(name: name) }
+                }
             )
             clients[name] = client
 
@@ -86,11 +198,13 @@ final class MCPRegistry {
                 AgentToolRegistry.shared.register(adapter)
             }
             LoggingService.shared.log("MCP server '\(name)' → \(tools.count) tools registered")
+            state.setState(name: name, to: .running(toolCount: tools.count))
             // Successful init — clear the restart counter so future crashes
             // get a fresh 3-attempt budget.
             restartAttempts.removeValue(forKey: name)
         } catch {
             LoggingService.shared.log("MCP server '\(name)' failed: \(error.localizedDescription)", level: .warning)
+            state.setState(name: name, to: .crashed(error.localizedDescription))
         }
     }
 
@@ -119,13 +233,19 @@ final class MCPRegistry {
 
     // MARK: - Config loader
 
-    struct MCPConfig: Decodable {
+    struct MCPConfig: Codable {
         let servers: [String: Server]
 
-        struct Server: Decodable {
+        struct Server: Codable, Equatable {
             let command: String
             let args: [String]?
             let env: [String: String]?
+
+            init(command: String, args: [String]? = nil, env: [String: String]? = nil) {
+                self.command = command
+                self.args = args
+                self.env = env
+            }
         }
     }
 
@@ -134,5 +254,11 @@ final class MCPRegistry {
             .appendingPathComponent(".jarvis/mcp.json")
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(MCPConfig.self, from: data)
+    }
+
+    /// Read the current on-disk config without mutating registry state. Used
+    /// by the Settings MCP pane to seed its editable form.
+    static func readConfigSnapshot() -> [String: MCPConfig.Server] {
+        (try? loadConfig())?.servers ?? [:]
     }
 }

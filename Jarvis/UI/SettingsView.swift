@@ -3,7 +3,7 @@ import SwiftUI
 /// Sidebar items for the Settings window. Exposed so `AppDelegate` can deep-link
 /// into a specific pane via menu-bar items.
 enum SettingsTab: Hashable, CaseIterable, Identifiable {
-    case apiKey, hud, modes, hotkeys, location, voice, claude, agent, history, usage, about
+    case apiKey, hud, modes, hotkeys, location, voice, claude, agent, mcp, history, usage, about
 
     var id: Self { self }
 
@@ -17,6 +17,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .voice:    return "Stemme"
         case .claude:   return "Claude Code"
         case .agent:    return "Agent"
+        case .mcp:      return "MCP-servere"
         case .history:  return "Samtaler"
         case .usage:    return "Forbrug"
         case .about:    return "Om"
@@ -33,6 +34,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .voice:    return "mic.and.signal.meter.fill"
         case .claude:   return "sparkles"
         case .agent:    return "wand.and.stars"
+        case .mcp:      return "server.rack"
         case .history:  return "clock.arrow.circlepath"
         case .usage:    return "chart.bar.fill"
         case .about:    return "info.circle"
@@ -88,6 +90,8 @@ struct SettingsView: View {
             SettingsClaudePane()
         case .agent:
             SettingsAgentPane()
+        case .mcp:
+            SettingsMCPPane()
         case .history:
             SettingsHistoryPane()
         case .usage:

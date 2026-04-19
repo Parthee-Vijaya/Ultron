@@ -55,8 +55,11 @@ final class MCPClient {
     /// Promises awaiting responses keyed on id.
     private var pending: [Int: CheckedContinuation<Any, Error>] = [:]
     private var initialized = false
+    /// Set to true when `shutdown()` is called so the termination handler can
+    /// distinguish intentional exits from crashes.
+    nonisolated(unsafe) private var intentionalShutdown = false
 
-    init(name: String, command: String, args: [String], env: [String: String]) throws {
+    init(name: String, command: String, args: [String], env: [String: String], onTermination: (@MainActor @Sendable (String) -> Void)? = nil) throws {
         self.name = name
         self.process = Process()
         self.stdinPipe = Pipe()
@@ -75,6 +78,16 @@ final class MCPClient {
         for (k, v) in env { merged[k] = v }
         process.environment = merged
 
+        // Capture name locally so the `@Sendable` terminationHandler closure
+        // doesn't need to reach back into `self` — it just forwards the server
+        // name so the registry can look up config + restart it.
+        let serverName = name
+        process.terminationHandler = { [weak self] _ in
+            let wasIntentional = self?.intentionalShutdown ?? false
+            guard !wasIntentional, let cb = onTermination else { return }
+            Task { @MainActor in cb(serverName) }
+        }
+
         do {
             try process.run()
         } catch {
@@ -89,7 +102,10 @@ final class MCPClient {
     }
 
     deinit {
-        if process.isRunning { process.terminate() }
+        if process.isRunning {
+            intentionalShutdown = true
+            process.terminate()
+        }
     }
 
     // MARK: - Public API
@@ -151,6 +167,7 @@ final class MCPClient {
     }
 
     func shutdown() {
+        intentionalShutdown = true
         if process.isRunning { process.terminate() }
     }
 
