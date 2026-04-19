@@ -9,20 +9,24 @@ import SwiftUI
 /// built-in match for the sci-fi-tech feel of the source design; a custom
 /// Orbitron / Michroma face could come later if we want a closer match).
 struct JarvisWordmark: View {
-    /// Diameter of the ring. 40pt lands the wordmark as a compact badge
-    /// rather than a hero graphic — proportioned so the text fills the
-    /// ring horizontally at ~7pt letter height.
-    var diameter: CGFloat = 40
+    /// Font size of the wordmark letters. The ring is sized relative to
+    /// this — so changing one number rescales the whole mark while keeping
+    /// the "text-extends-past-the-circle" proportions from the reference.
+    var fontSize: CGFloat = 14
 
     /// 0…1 pulse amplitude the ring animates through. Text stays static
     /// so the word is always readable; the ring alone breathes.
     @State private var pulse: Bool = false
 
+    /// In the Stark reference the text is WIDER than the circle — letters
+    /// poke out through both side-gaps. We size the ring at ~75% of the
+    /// text height × a horizontal factor so the bracket feels right.
+    private var ringDiameter: CGFloat { fontSize * 4.2 }
+
     var body: some View {
         ZStack {
             ring
-                // Opacity + scale breathing — subtle amplitudes so the
-                // pulse reads as "alive" rather than "animating".
+                .frame(width: ringDiameter, height: ringDiameter)
                 .opacity(pulse ? 0.55 : 1.0)
                 .scaleEffect(pulse ? 0.94 : 1.0)
                 .animation(
@@ -30,11 +34,11 @@ struct JarvisWordmark: View {
                     value: pulse
                 )
             Text("J.A.R.V.I.S")
-                .font(.system(size: diameter * 0.18, weight: .semibold))
-                .kerning(diameter * 0.025)
+                .font(.system(size: fontSize, weight: .semibold))
+                .kerning(fontSize * 0.14)
                 .foregroundStyle(Color.white)
+                .fixedSize(horizontal: true, vertical: true)
         }
-        .frame(width: diameter, height: diameter)
         .onAppear { pulse = true }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("J.A.R.V.I.S")
