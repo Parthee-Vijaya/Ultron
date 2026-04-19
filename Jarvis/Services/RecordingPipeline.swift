@@ -267,6 +267,7 @@ class RecordingPipeline {
     /// on both success and failure (via `MetricsService.time`).
     private func transcribeLocally(_ audioData: Data) async -> String? {
         guard await localTranscriber.isReady else { return nil }
+        hudController.setStep(ProcessingStep.Kind.transcribing(transport: "local-whisper"))
         do {
             let text = try await MetricsService.shared.time(.transcribe, transport: "local-whisper") {
                 try await self.localTranscriber.transcribe(audioData: audioData, language: "da")
@@ -282,7 +283,8 @@ class RecordingPipeline {
     /// through `MetricsService.time` so `modelCall` latency is recorded
     /// identically on success + failure.
     private func callModel(prompt: String, screenshot: Data?, mode: Mode, transport: String) async -> Result<String, Error> {
-        await MetricsService.shared.time(.modelCall, mode: mode.name, transport: transport) {
+        hudController.setStep(mode.webSearch ? ProcessingStep.Kind.searchingWeb(query: prompt) : ProcessingStep.Kind.thinking(provider: "Gemini"))
+        return await MetricsService.shared.time(.modelCall, mode: mode.name, transport: transport) {
             if let screenshot {
                 return await self.geminiClient.sendTextWithImage(prompt: prompt, mode: mode, imageData: screenshot)
             } else {
@@ -296,7 +298,8 @@ class RecordingPipeline {
     /// `.modelCall` metric tagged `gemini-audio` so we can compare the two
     /// transports directly in the histogram.
     private func callModelWithAudio(audioData: Data, screenshot: Data?, mode: Mode) async -> Result<String, Error> {
-        await MetricsService.shared.time(.modelCall, mode: mode.name, transport: "gemini-audio") {
+        hudController.setStep(ProcessingStep.Kind.transcribing(transport: "gemini-audio"))
+        return await MetricsService.shared.time(.modelCall, mode: mode.name, transport: "gemini-audio") {
             if let screenshot {
                 return await self.geminiClient.sendAudioWithImage(audioData, imageData: screenshot, mode: mode)
             } else {
@@ -384,6 +387,7 @@ class RecordingPipeline {
         onStateChanged?(.idle)
         activePipelineMode = nil
         pendingScreenshot = nil
+        hudController.setStep(ProcessingStep.Kind?.none)
         clearPipelineState()
     }
 }

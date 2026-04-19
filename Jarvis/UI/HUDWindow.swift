@@ -63,6 +63,12 @@ class HUDWindowController {
         if panel == nil { presentPanel() }
     }
 
+    /// v1.4 Fase 2b: set (or clear) the narrated progress step shown in the
+    /// processing HUD. Pipeline callers nil this out when their stage ends.
+    func setStep(_ kind: ProcessingStep.Kind?) {
+        hudState.currentStep = kind.map { ProcessingStep($0) }
+    }
+
     func showResult(_ text: String) {
         cancelRecordingTimer()
         hudState.currentPhase = .result(text: text)

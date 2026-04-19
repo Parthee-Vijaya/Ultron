@@ -190,10 +190,17 @@ struct HUDContentView: View {
                 ProgressView()
                     .controlSize(.small)
                     .tint(JarvisTheme.accent)
-                Text("Behandler…")
+                Text(state.currentStep?.displayText ?? "Behandler…")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
+                    .animation(.easeInOut(duration: 0.2), value: state.currentStep)
                 Spacer()
+                if let step = state.currentStep {
+                    Image(systemName: step.icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(JarvisTheme.accent.opacity(0.75))
+                        .transition(.opacity)
+                }
             }
             if !speechService.transcript.isEmpty {
                 Text(speechService.transcript)

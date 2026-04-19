@@ -34,4 +34,9 @@ class HUDState {
     var currentPhase: Phase = .processing
     var isVisible = false
     var isPinned = false
+    /// v1.4 Fase 2b: the specific stage the voice pipeline is in right now.
+    /// Nil means "not processing" — the HUD falls back to a generic
+    /// "Behandler…" header. Set by RecordingPipeline + GeminiClient's
+    /// grounded-search path.
+    var currentStep: ProcessingStep?
 }

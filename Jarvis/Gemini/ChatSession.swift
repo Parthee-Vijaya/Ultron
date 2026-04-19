@@ -57,6 +57,12 @@ class ChatSession {
     /// agent did without tailing the audit-log file.
     var agentToolInvocations: [AgentService.ToolInvocation] = []
 
+    /// v1.4 Fase 2b: what the chat pipeline is currently doing. Nil while
+    /// idle. Set by ChatPipeline / AgentChatPipeline at key transitions so
+    /// the chat UI can render a narrated status line (e.g. "Jarvis tænker…",
+    /// "Kører read_file…") next to the streaming cursor.
+    var currentStep: ProcessingStep?
+
     func addUserMessage(_ text: String) {
         messages.append(ChatMessage(role: .user, text: text))
     }
@@ -101,6 +107,7 @@ class ChatSession {
         isStreaming = false
         pendingConfirmation = nil
         agentToolInvocations.removeAll()
+        currentStep = nil
     }
 
     /// v1.1.5: replace the current message log with a loaded conversation
@@ -111,6 +118,7 @@ class ChatSession {
         isStreaming = false
         pendingConfirmation = nil
         agentToolInvocations.removeAll()
+        currentStep = nil
     }
 
     /// Turn the message log into REST history suitable for

@@ -308,6 +308,44 @@ struct ChatView: View {
         .help(help)
     }
 
+    // MARK: - Progress narration row (v1.4 Fase 2b)
+
+    /// Compact "what am I doing" line shown below the last assistant message
+    /// while a reply is being awaited or streamed. Reads the kind/icon/text
+    /// straight off `ProcessingStep` so new Kinds auto-render without edits
+    /// here.
+    private struct ProgressNarrationRow: View {
+        let step: ProcessingStep
+        @State private var dim = false
+
+        var body: some View {
+            HStack(spacing: 8) {
+                Image(systemName: step.icon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(JarvisTheme.accent)
+                Text(step.displayText)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(JarvisTheme.surfaceElevated.opacity(0.5))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(JarvisTheme.accent.opacity(0.15), lineWidth: 0.5)
+            )
+            .opacity(dim ? 0.65 : 1.0)
+            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: dim)
+            .onAppear { dim = true }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(step.displayText)
+        }
+    }
+
     // MARK: - Tool invocations (v1.4 Fase 2b.2)
 
     @ViewBuilder
@@ -359,6 +397,14 @@ struct ChatView: View {
                     // run tools in the current session; collapsed by default.
                     if !chatSession.agentToolInvocations.isEmpty {
                         toolInvocationsSection
+                    }
+                    // v1.4 Fase 2b: progress narration. Shows what Jarvis is
+                    // doing ("Søger på nettet…", "Claude tænker…") below the
+                    // last assistant bubble while we're awaiting a reply but
+                    // haven't started receiving streamed tokens yet.
+                    if chatSession.isStreaming, let step = chatSession.currentStep {
+                        ProgressNarrationRow(step: step)
+                            .padding(.horizontal, 4)
                     }
                 }
                 .padding(.horizontal, 14)

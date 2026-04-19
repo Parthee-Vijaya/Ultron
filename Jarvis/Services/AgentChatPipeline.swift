@@ -41,6 +41,7 @@ final class AgentChatPipeline {
     func sendTextMessage(_ text: String) {
         chatSession.addUserMessage(text)
         chatSession.isStreaming = true
+        chatSession.currentStep = ProcessingStep(.thinking(provider: "Claude"))
         let placeholderID = chatSession.addAssistantMessage("")
 
         Task { [weak self] in
@@ -58,6 +59,7 @@ final class AgentChatPipeline {
                 )
             }
             chatSession.isStreaming = false
+            chatSession.currentStep = nil
             chatSession.pendingConfirmation = nil
         }
     }

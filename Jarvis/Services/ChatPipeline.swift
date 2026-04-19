@@ -42,6 +42,11 @@ final class ChatPipeline {
         chatSession.isStreaming = true
 
         let effectiveMode = mode ?? self.mode
+        // v1.4 Fase 2b: narrate the waiting state. Web-search modes show the
+        // search step explicitly; others just "Gemini thinks…".
+        chatSession.currentStep = ProcessingStep(
+            effectiveMode.webSearch ? .searchingWeb(query: text) : .thinking(provider: "Gemini")
+        )
         Task {
             await streamResponse(placeholderID: placeholderID, text: text, mode: effectiveMode)
         }
@@ -83,7 +88,14 @@ final class ChatPipeline {
             text: text,
             mode: activeMode,
             onDelta: { [weak self] delta in
-                self?.chatSession.appendToAssistant(id: placeholderID, delta: delta)
+                guard let self else { return }
+                // Switch the narrated step to "streaming" the moment the first
+                // delta lands, so the user sees the state change from "thinking"
+                // to "receiving" the way ChatGPT's UI does.
+                if self.chatSession.currentStep?.kind != .streaming(provider: "Gemini") {
+                    self.chatSession.currentStep = ProcessingStep(.streaming(provider: "Gemini"))
+                }
+                self.chatSession.appendToAssistant(id: placeholderID, delta: delta)
             }
         )
 
@@ -100,6 +112,7 @@ final class ChatPipeline {
         }
 
         chatSession.isStreaming = false
+        chatSession.currentStep = nil
         conversationID = conversationStore.saveSession(chatSession, existingID: conversationID)
     }
 
