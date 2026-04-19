@@ -5,7 +5,10 @@ APP_NAME="Jarvis"
 SCHEME="Jarvis"
 PROJECT="Jarvis.xcodeproj"
 BUILD_DIR="build"
-DMG_NAME="Jarvis-1.2.1-alpha.1.dmg"
+# Read the app version straight out of Constants.swift so the DMG name
+# tracks the source of truth without manual bumps.
+APP_VERSION=$(grep -oE 'appVersion = "[^"]+"' Jarvis/Constants.swift | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+DMG_NAME="Jarvis-${APP_VERSION}.dmg"
 
 echo "=== Building $APP_NAME ==="
 
