@@ -336,8 +336,16 @@ class HUDWindowController {
         }
         cancelAutoClose()
 
-        let view = InfoModeView(service: infoModeService) { [weak self] in self?.close() }
-            .jarvisHUDBackground(showReticle: false)
+        // v1.4 polish: wrap the InfoModeView in a ScrollView so content
+        // taller than the visible screen stays reachable. Previously the
+        // height was hard-clamped to `screenVisible.height - 40` which
+        // meant everything below the clamp (System / Netværk tiles) got
+        // cut off. Now the panel caps at the same height but its content
+        // scrolls inside.
+        let scrollable = ScrollView(.vertical, showsIndicators: false) {
+            InfoModeView(service: infoModeService) { [weak self] in self?.close() }
+        }
+        let view = scrollable.jarvisHUDBackground(showReticle: false)
 
         let hostingController = NSHostingController(rootView: view)
         // DO NOT set sizingOptions = .preferredContentSize. That option tells
@@ -361,11 +369,13 @@ class HUDWindowController {
 
         // One-shot measurement: force the hosting view to layout once so we
         // can read its fittingSize. Because no window is observing it yet,
-        // there's no feedback loop.
+        // there's no feedback loop. InfoModeView now lives inside a
+        // ScrollView so the fittingSize's height is effectively "as tall as
+        // the content wants", which we clamp against the visible screen.
         hostingController.view.layoutSubtreeIfNeeded()
         let fitting = hostingController.view.fittingSize
         let screenVisible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let targetWidth = max(fitting.width, 680)
+        let targetWidth = max(fitting.width, 820)
         let targetHeight = min(fitting.height, screenVisible.height - 40)
         let origin = NSPoint(
             x: screenVisible.maxX - targetWidth - Constants.HUD.padding,

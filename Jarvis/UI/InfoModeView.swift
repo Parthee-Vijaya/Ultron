@@ -32,7 +32,11 @@ struct InfoModeView: View {
         // Width is still fixed; height is derived from the content. See the
         // v1.2.3 crash-fix comment on the NSHostingController feedback
         // loop for why we can't use .fixedSize here.
-        .frame(width: 680, alignment: .topLeading)
+        // v1.4 Fase 2c polish: widened to 820pt + the height-clamp in
+        // `HUDWindow.anchorPanelTopRight` now wraps content in a ScrollView
+        // so tall content (full system / network / Claude-stats rows) is
+        // reachable without the panel overflowing below the visible screen.
+        .frame(width: 820, alignment: .topLeading)
         .jarvisChatBackdrop()
         .task { await service.refresh() }
     }
@@ -438,9 +442,14 @@ struct InfoModeView: View {
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.caption).foregroundStyle(Color.white.opacity(0.7))
+                // Let the text field take the remaining horizontal space;
+                // previous layout let the map + buttons squeeze it down to
+                // ~20pt so you couldn't see what you were typing.
                 TextField("Indtast adresse…", text: $customDestination)
                     .textFieldStyle(.roundedBorder)
-                    .font(.caption)
+                    .font(.footnote)
+                    .frame(minWidth: 180)
+                    .frame(maxWidth: .infinity)
                     .onSubmit(runCustomDestination)
 
                 Button(action: runCustomDestination) {
@@ -455,6 +464,7 @@ struct InfoModeView: View {
                 .controlSize(.small)
                 .disabled(customDestination.trimmingCharacters(in: .whitespaces).isEmpty
                           || service.isRunningCustomCommute)
+                .fixedSize()
 
                 if service.customDestinationAddress != nil {
                     Button {
@@ -466,6 +476,7 @@ struct InfoModeView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .fixedSize()
                 }
             }
             if let active = service.customDestinationAddress {
