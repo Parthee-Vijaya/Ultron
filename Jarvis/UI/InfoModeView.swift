@@ -24,22 +24,21 @@ struct InfoModeView: View {
                 tilesRow.fixedSize(horizontal: false, vertical: true)
                 airAndMoonRow.fixedSize(horizontal: false, vertical: true)
 
-                // Commute tile owns a full-width row: internally it now
-                // splits horizontally (stats/chips/traffic/pinned/input on
-                // the left, map + charger legend on the right), which keeps
-                // the overall tile shorter than the old vertically-stacked
-                // layout could.
-                commuteTile.fixedSize(horizontal: false, vertical: true)
-
-                // Claude-stats, system and network keep a 2-col pairing so
-                // the panel reads symmetrically after the wide commute row.
+                // Rute + System share a row so the user can read both
+                // without scrolling. Rute tile is narrower now — its
+                // internal layout drops the horizontal split and stacks
+                // stats/chips/motorvejsulykker/input/map vertically.
                 HStack(alignment: .top, spacing: 12) {
-                    claudeStatsTile
+                    commuteTile
                     systemTile
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
-                networkActions.fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 12) {
+                    claudeStatsTile
+                    networkActions
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -451,27 +450,17 @@ struct InfoModeView: View {
 
     private var commuteTile: some View {
         tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
-            // Compact two-column split:
-            //   Left  — stats + Live-trafik chip + motorvejsulykker list
-            //           + adresse-input. Pinnede destinationer are hidden
-            //           here (the top Trafikinfo tile carries the general
-            //           "what's happening" signal; this tile is focused on
-            //           the active route).
-            //   Right — Map with charger legend, fills column height.
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    commuteStatsColumn
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    commuteChipsRow
-                    motorwayAccidentsSection
-                    destinationInputRow
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                commuteMapColumn
-                    .frame(width: 340)
-                    .frame(maxHeight: .infinity)
-            }
+            // Half-width tile that sits next to System info. Internal
+            // layout is now a straight vertical stack — no left/right
+            // split — so the narrower tile width doesn't squeeze either
+            // the stats or the map.
+            commuteStatsColumn
+                .frame(maxWidth: .infinity, alignment: .leading)
+            commuteChipsRow
+            motorwayAccidentsSection
+            destinationInputRow
+            commuteMapColumn
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -510,9 +499,9 @@ struct InfoModeView: View {
         }
     }
 
-    /// Map + charger legend. Fills all vertical space the left column
-    /// consumes, so there's no deadspace below the map regardless of how
-    /// tall the pinned/stats/chips/input stack ends up.
+    /// Map + charger legend. Sized to a compact 200pt height since the
+    /// tile is now half-width — map is still zoomable + scrollable if
+    /// the user needs more detail.
     @ViewBuilder
     private var commuteMapColumn: some View {
         if let commute = service.commute, !commute.routeCoordinates.isEmpty {
@@ -523,7 +512,8 @@ struct InfoModeView: View {
                     coordinates: commute.routeCoordinates,
                     chargers: service.chargers
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -533,7 +523,6 @@ struct InfoModeView: View {
                     chargerLegend
                 }
             }
-            .frame(minHeight: 260)
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.white.opacity(0.04))
@@ -549,8 +538,7 @@ struct InfoModeView: View {
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
                 )
-                .frame(minHeight: 260)
-                .frame(maxHeight: .infinity)
+                .frame(height: 200)
         }
     }
 
