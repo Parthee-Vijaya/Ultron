@@ -308,6 +308,31 @@ struct ChatView: View {
         .help(help)
     }
 
+    // MARK: - Tool invocations (v1.4 Fase 2b.2)
+
+    @ViewBuilder
+    private var toolInvocationsSection: some View {
+        let count = chatSession.agentToolInvocations.count
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+                Text(count == 1 ? "1 værktøj kørt" : "\(count) værktøjer kørt")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(JarvisTheme.textSecondary)
+            }
+            .padding(.horizontal, 4)
+            VStack(spacing: 4) {
+                ForEach(Array(chatSession.agentToolInvocations.enumerated()), id: \.offset) { _, invocation in
+                    ToolInvocationCard(invocation: invocation)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
+    }
+
     // MARK: - Messages
 
     private var messagesArea: some View {
@@ -322,9 +347,18 @@ struct ChatView: View {
                             message: message,
                             onRetry: commandRouter.map { router in
                                 { msg in Task { await router.retry(msg) } }
-                            }
+                            },
+                            isStreaming: chatSession.isStreaming
+                                && message.role == .assistant
+                                && message.id == chatSession.messages.last?.id
                         )
                         .id(message.id)
+                    }
+                    // v1.4 Fase 2b.2: render agent tool invocations as compact
+                    // cards after the message log. Appears when Agent mode has
+                    // run tools in the current session; collapsed by default.
+                    if !chatSession.agentToolInvocations.isEmpty {
+                        toolInvocationsSection
                     }
                 }
                 .padding(.horizontal, 14)
