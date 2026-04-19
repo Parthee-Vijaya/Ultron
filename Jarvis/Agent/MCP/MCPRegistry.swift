@@ -9,6 +9,12 @@ final class MCPRegistry {
     static let shared = MCPRegistry()
 
     private var clients: [String: MCPClient] = [:]
+    /// v1.4 Fase 4 slice: track each server's restart attempts so a
+    /// consistently failing server doesn't go into an infinite respawn loop.
+    /// Keyed by server name; reset on successful re-initialise.
+    private var restartAttempts: [String: Int] = [:]
+    private let maxRestartAttempts = 3
+    private var serverConfigs: [String: MCPConfig.Server] = [:]
 
     private init() {}
 
@@ -27,9 +33,33 @@ final class MCPRegistry {
             return
         }
 
+        serverConfigs = config.servers
         for (name, server) in config.servers {
             await startServer(name: name, server: server)
         }
+    }
+
+    /// v1.4 Fase 4 slice: restart a previously-running MCP server after it
+    /// disappeared (process exit / stdio pipe broke). Call sites are in
+    /// `MCPClient` — when it detects a dead process it asks the registry to
+    /// respawn. We cap attempts per server so a server that refuses to start
+    /// doesn't spin forever.
+    func requestRestart(name: String) async {
+        guard let server = serverConfigs[name] else { return }
+        let attempts = restartAttempts[name, default: 0]
+        guard attempts < maxRestartAttempts else {
+            LoggingService.shared.log("MCP server '\(name)' exceeded \(maxRestartAttempts) restart attempts — giving up", level: .error)
+            return
+        }
+        restartAttempts[name] = attempts + 1
+        LoggingService.shared.log("MCP server '\(name)' restarting (attempt \(attempts + 1)/\(maxRestartAttempts))", level: .warning)
+        clients[name]?.shutdown()
+        clients.removeValue(forKey: name)
+        // Exponential backoff — 1s, 2s, 4s. Prevents hammering a flaky
+        // server while still recovering from transient crashes quickly.
+        let delay = UInt64(pow(2.0, Double(attempts))) * 1_000_000_000
+        try? await Task.sleep(nanoseconds: delay)
+        await startServer(name: name, server: server)
     }
 
     /// Stop every running server — wired to AppDelegate's applicationWillTerminate.
@@ -56,6 +86,9 @@ final class MCPRegistry {
                 AgentToolRegistry.shared.register(adapter)
             }
             LoggingService.shared.log("MCP server '\(name)' → \(tools.count) tools registered")
+            // Successful init — clear the restart counter so future crashes
+            // get a fresh 3-attempt budget.
+            restartAttempts.removeValue(forKey: name)
         } catch {
             LoggingService.shared.log("MCP server '\(name)' failed: \(error.localizedDescription)", level: .warning)
         }

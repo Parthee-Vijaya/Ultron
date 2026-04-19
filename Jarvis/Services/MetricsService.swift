@@ -140,6 +140,12 @@ actor MetricsService {
             return
         }
 
+        // v1.4: rotate at 10 MB — matches the pattern in LoggingService
+        // (which rolls at 5 MB). Metrics are more verbose per-entry so a
+        // higher cap keeps a month of typical usage in a single file before
+        // rolling. One level of .1 retention is enough for post-hoc analysis.
+        rotateIfNeeded()
+
         guard let handle = try? FileHandle(forWritingTo: jsonlURL) else {
             LoggingService.shared.log("MetricsService: could not open \(jsonlURL.lastPathComponent) for append; dropping sample", level: .warning)
             return
@@ -147,5 +153,17 @@ actor MetricsService {
         defer { try? handle.close() }
         _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: bytes)
+    }
+
+    private func rotateIfNeeded() {
+        let cap: UInt64 = 10 * 1_024 * 1_024
+        let fm = FileManager.default
+        guard let attrs = try? fm.attributesOfItem(atPath: jsonlURL.path),
+              let size = attrs[.size] as? UInt64,
+              size >= cap else { return }
+
+        let rotatedURL = jsonlURL.appendingPathExtension("1")
+        try? fm.removeItem(at: rotatedURL)
+        try? fm.moveItem(at: jsonlURL, to: rotatedURL)
     }
 }
