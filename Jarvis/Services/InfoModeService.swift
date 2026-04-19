@@ -50,6 +50,13 @@ final class InfoModeService {
         locationService.coordinate?.latitude
     }
 
+    /// Latest known full coordinate. Used by the Himmel tile to compute
+    /// ISS-to-user distance without every call site re-deriving it from
+    /// `latitudeForCockpit` + hardcoded longitude.
+    var userCoordinate: CLLocationCoordinate2D? {
+        locationService.coordinate
+    }
+
     // Async-action state for the manual buttons
     private(set) var isRunningSpeedtest = false
     private(set) var isRunningNetworkScan = false
@@ -82,12 +89,27 @@ final class InfoModeService {
     private let calendarService = CalendarService()
     private let trafficEventsService = TrafficEventsService()
     private let chargerService = ChargerService()
+    private let aircraftService = AircraftService()
+    private let issService = ISSService()
     private let cache = InfoCache()
 
     /// EV charger overlays for the Hjem map. 24 h cache in the service.
     /// Denmark-wide — MapKit clips to the visible rect automatically, so we
     /// don't do client-side filtering here.
     private(set) var chargers: [ChargerLocation] = []
+
+    /// Nearest aircraft picked up by adsb.lol within ~50 NM of the user,
+    /// sorted closest first. Capped at 8 in the service so the UI can
+    /// slice whatever it needs without re-fetching.
+    private(set) var aircraftNearby: [Aircraft] = []
+
+    /// Planets currently above the user's horizon. Sorted brightest first;
+    /// includes altitude/azimuth so the tile can render e.g. "Jupiter · SV 42°".
+    private(set) var visiblePlanets: [PlanetVisibility] = []
+
+    /// ISS current subpoint (lat/lon + altitude + velocity). Refreshed
+    /// every 30 s via the live-metrics polling loop.
+    private(set) var issPosition: ISSPosition?
 
     /// Guards against concurrent `refresh` calls. The view calls `.task` on appear
     /// which can fire multiple times during SwiftUI state churn.
@@ -159,6 +181,8 @@ final class InfoModeService {
                 group.addTask { await self.loadCalendarTile() }
                 group.addTask { await self.loadTrafficEventsTile() }
                 group.addTask { await self.loadChargersTile() }
+                group.addTask { await self.loadAircraftTile() }
+                group.addTask { await self.loadSkyTile() }
             }
             await MainActor.run {
                 self.lastRefresh = Date()
@@ -206,6 +230,48 @@ final class InfoModeService {
     func refreshClaudeStats() async {
         let snap = await claudeStatsService.fetch()
         self.claudeStats = snap
+    }
+
+    /// Fly-over-dig + ISS sub-point. Called on a 30-second poll while the
+    /// Cockpit is visible so the tiles feel live without hammering the
+    /// slow probes on the main 2-min refresh cycle.
+    func refreshAircraft() async {
+        await loadAircraftTile()
+    }
+
+    func refreshISS() async {
+        guard let coord = locationService.coordinate else { return }
+        let pos = await issService.fetch()
+        self.issPosition = pos
+        if pos != nil {
+            // Recompute visible planets opportunistically on the same
+            // cadence so the Himmel tile always reflects "now".
+            self.visiblePlanets = PlanetEphemeris.visiblePlanets(
+                latitude: coord.latitude,
+                longitude: coord.longitude
+            )
+        }
+    }
+
+    private func loadAircraftTile() async {
+        guard let coord = locationService.coordinate else {
+            self.aircraftNearby = []
+            return
+        }
+        let list = await aircraftService.fetch(near: coord, radiusNM: 50)
+        self.aircraftNearby = Array(list.prefix(8))
+    }
+
+    /// Combined loader for the Himmel tile — planets are pure local
+    /// computation so this is nearly free; ISS is a single cheap GET.
+    private func loadSkyTile() async {
+        if let coord = locationService.coordinate {
+            self.visiblePlanets = PlanetEphemeris.visiblePlanets(
+                latitude: coord.latitude,
+                longitude: coord.longitude
+            )
+        }
+        self.issPosition = await issService.fetch()
     }
 
     private func loadWeatherTile() async {

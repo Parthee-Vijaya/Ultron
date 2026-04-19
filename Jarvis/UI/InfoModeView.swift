@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import SwiftUI
 
 struct InfoModeView: View {
@@ -43,7 +44,18 @@ struct InfoModeView: View {
                 // results) so the two network sub-tiles collapse into one.
                 HStack(alignment: .top, spacing: 12) {
                     commuteTile
-                    systemQuadrant
+                    VStack(spacing: 8) {
+                        systemQuadrant
+                        // Fill the right-column gap under the 2×2 with
+                        // two small tiles — aircraft overhead + tonight's
+                        // planets + ISS. Fixed-size so the row height is
+                        // driven by content, not stretching into infinity.
+                        HStack(alignment: .top, spacing: 8) {
+                            flyTile
+                            himmelTile
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -90,6 +102,16 @@ struct InfoModeView: View {
             while !Task.isCancelled {
                 await service.refreshLiveMetrics()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+        // Aircraft + ISS + planets every 30 s. adsb.lol allows ~1 req/s
+        // so we're comfortably under the anonymous limit; wheretheiss.at
+        // is similarly generous. Planet ephemeris is local math — free.
+        .task {
+            while !Task.isCancelled {
+                await service.refreshAircraft()
+                await service.refreshISS()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
             }
         }
     }
@@ -1524,6 +1546,138 @@ struct InfoModeView: View {
                     .foregroundStyle(Color.white.opacity(0.75))
                     .padding(.top, 2)
             }
+        }
+    }
+
+    // MARK: - Fly + Himmel tiles (bottom-right filler)
+
+    /// "Fly over dig" — 3 nearest aircraft from adsb.lol, showing
+    /// callsign + altitude (FL) + compass direction from user + distance.
+    /// Hidden entirely when the feed returns nothing (anywhere really rural
+    /// at 3am — unlikely in daylight Denmark).
+    private var flyTile: some View {
+        subTile(title: "Fly over dig", icon: "airplane") {
+            if service.aircraftNearby.isEmpty {
+                Text("Ingen fly i nærheden")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.55))
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(service.aircraftNearby.prefix(4)) { a in
+                        flyRow(a)
+                    }
+                }
+            }
+        }
+    }
+
+    private func flyRow(_ a: Aircraft) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if let heading = a.headingDeg {
+                Image(systemName: "airplane")
+                    .font(.caption2)
+                    .rotationEffect(.degrees(heading - 90))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: 10)
+            } else {
+                Image(systemName: "airplane")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .frame(width: 10)
+            }
+            Text(a.callsign ?? a.registration ?? "?")
+                .font(.caption2.weight(.semibold).monospaced())
+                .foregroundStyle(.white)
+                .frame(width: 62, alignment: .leading)
+                .lineLimit(1)
+            if let fl = a.altitudeFL {
+                Text(fl)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Color.white.opacity(0.8))
+            } else if a.onGround {
+                Text("GND")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
+            Text(Compass.label(for: a.bearingDeg))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.white.opacity(0.8))
+            Spacer(minLength: 0)
+            Text("\(Int(a.distanceKm.rounded())) km")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.55))
+        }
+    }
+
+    /// "Himmel" — synlige planeter + ISS current subpoint. Planets come
+    /// from the local `PlanetEphemeris` helper; ISS sub-point from the
+    /// wheretheiss.at API. Everything degrades gracefully when offline or
+    /// when no planet is currently above the horizon.
+    private var himmelTile: some View {
+        subTile(title: "Himmel", icon: "sparkles") {
+            VStack(alignment: .leading, spacing: 3) {
+                if service.visiblePlanets.isEmpty {
+                    Text("Ingen planeter over horisonten")
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.55))
+                } else {
+                    ForEach(service.visiblePlanets.prefix(3)) { planet in
+                        himmelPlanetRow(planet)
+                    }
+                }
+                if let iss = service.issPosition {
+                    Divider()
+                        .frame(height: 0.5)
+                        .overlay(Color.white.opacity(0.12))
+                        .padding(.vertical, 2)
+                    issRow(iss)
+                }
+            }
+        }
+    }
+
+    private func himmelPlanetRow(_ planet: PlanetVisibility) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(planet.kind.glyph)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 12)
+            Text(planet.kind.danishName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, alignment: .leading)
+            Text(planet.compass)
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.75))
+            Spacer(minLength: 0)
+            Text(String(format: "%.0f°", planet.altitudeDeg))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.6))
+        }
+    }
+
+    private func issRow(_ iss: ISSPosition) -> some View {
+        // Fall back to Copenhagen when CoreLocation hasn't fixed yet so
+        // the tile still renders useful distance for cold-open.
+        let userCoord = service.userCoordinate
+            ?? CLLocationCoordinate2D(latitude: 55.67, longitude: 12.57)
+        let km = Int(iss.distanceKmFrom(userCoord).rounded())
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "dot.radiowaves.up.forward")
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.85))
+                .frame(width: 12)
+            Text("ISS")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, alignment: .leading)
+            Text("\(Int(iss.altitudeKm)) km op")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.75))
+            Spacer(minLength: 0)
+            Text("\(km) km væk")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.55))
         }
     }
 
