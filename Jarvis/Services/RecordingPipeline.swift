@@ -10,6 +10,10 @@ class RecordingPipeline {
     private let hudController: HUDWindowController
     private let ttsService: TTSService
     private let modeManager: ModeManager
+    /// v1.3: local speech-to-text via WhisperKit (when the SPM package is
+    /// wired up) or a no-op fallback otherwise. When `isReady` is false the
+    /// pipeline silently uses the legacy Gemini audio path.
+    private let localTranscriber: any LocalTranscriber
 
     // MARK: - Pipeline State
     private var recordingState: RecordingState = .idle
@@ -28,7 +32,8 @@ class RecordingPipeline {
         permissions: PermissionsManager,
         hudController: HUDWindowController,
         ttsService: TTSService,
-        modeManager: ModeManager
+        modeManager: ModeManager,
+        localTranscriber: (any LocalTranscriber)? = nil
     ) {
         self.audioCapture = audioCapture
         self.geminiClient = geminiClient
@@ -38,9 +43,17 @@ class RecordingPipeline {
         self.hudController = hudController
         self.ttsService = ttsService
         self.modeManager = modeManager
+        self.localTranscriber = localTranscriber ?? LocalTranscribers.makeDefault()
 
         setupHUDCallbacks()
         checkCrashRecovery()
+
+        // Kick off model preload in the background so the first real
+        // transcription doesn't wait for ANE compilation. If WhisperKit isn't
+        // wired up, `preload()` is a no-op on the NoOp transcriber.
+        Task { [transcriber = self.localTranscriber] in
+            try? await transcriber.preload()
+        }
     }
 
     // MARK: - Public API
@@ -178,24 +191,84 @@ class RecordingPipeline {
     // MARK: - Processing
 
     private func processRecording(audioData: Data, screenshot: Data?, mode: Mode) async {
+        // v1.3 two-path flow: try local Whisper first, fall back to Gemini-as-STT.
+        // When local works, we send TEXT (not audio) to Gemini for the Q&A /
+        // VibeCode / Professional / Vision cases — cheaper + faster.
+        let localTranscript = await transcribeLocally(audioData)
         let result: Result<String, Error>
 
+        if let text = localTranscript, !text.isEmpty {
+            LoggingService.shared.log("Local transcript (\(text.count) chars): \(text.prefix(80))…")
+            result = await callModel(prompt: text, screenshot: screenshot, mode: mode, transport: "text-after-local-stt")
+        } else {
+            result = await callModelWithAudio(audioData: audioData, screenshot: screenshot, mode: mode)
+        }
+
+        switch result {
+        case .success(let text):
+            LoggingService.shared.log("Model response: \(text.prefix(100))...")
+            deliverResult(text, mode: mode)
+        case .failure(let error):
+            LoggingService.shared.log("Model error: \(error)", level: .error)
+            hudController.showError("Fejl: \(error.localizedDescription)")
+        }
+
+        resetPipeline()
+    }
+
+    /// Run local STT if available. Returns nil when the transcriber isn't
+    /// ready, the audio is silent, or the engine threw — all of which fall
+    /// back to the legacy Gemini audio path. Emits a `.transcribe` metric.
+    private func transcribeLocally(_ audioData: Data) async -> String? {
+        let ready = await localTranscriber.isReady
+        guard ready else { return nil }
+        do {
+            let start = ContinuousClock.now
+            let text = try await localTranscriber.transcribe(audioData: audioData, language: "da")
+            let elapsed = ContinuousClock.now - start
+            let ms = Int(elapsed.components.seconds) * 1000
+                + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+            await MetricsService.shared.record(phase: .transcribe, durationMs: ms, transport: "local-whisper")
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        } catch {
+            LoggingService.shared.log("Local transcribe failed, falling back to Gemini audio: \(error)", level: .warning)
+            return nil
+        }
+    }
+
+    /// Text-to-model call (used after local STT succeeded). Emits a
+    /// `.modelCall` metric so we can see Gemini RTT separately from STT.
+    private func callModel(prompt: String, screenshot: Data?, mode: Mode, transport: String) async -> Result<String, Error> {
+        let start = ContinuousClock.now
+        let result: Result<String, Error>
+        if let screenshot {
+            result = await geminiClient.sendTextWithImage(prompt: prompt, mode: mode, imageData: screenshot)
+        } else {
+            result = await geminiClient.sendText(prompt: prompt, mode: mode)
+        }
+        let elapsed = ContinuousClock.now - start
+        let ms = Int(elapsed.components.seconds) * 1000
+            + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+        await MetricsService.shared.record(phase: .modelCall, durationMs: ms, mode: mode.name, transport: transport)
+        return result
+    }
+
+    /// Legacy path: audio → Gemini (Gemini transcribes internally). Retained
+    /// as a fallback for when WhisperKit isn't loaded yet. Emits a
+    /// `.modelCall` metric tagged `gemini-audio` so we can compare the two.
+    private func callModelWithAudio(audioData: Data, screenshot: Data?, mode: Mode) async -> Result<String, Error> {
+        let start = ContinuousClock.now
+        let result: Result<String, Error>
         if let screenshot {
             result = await geminiClient.sendAudioWithImage(audioData, imageData: screenshot, mode: mode)
         } else {
             result = await geminiClient.sendAudio(audioData, mode: mode)
         }
-
-        switch result {
-        case .success(let text):
-            LoggingService.shared.log("Gemini response: \(text.prefix(100))...")
-            deliverResult(text, mode: mode)
-        case .failure(let error):
-            LoggingService.shared.log("Gemini error: \(error)", level: .error)
-            hudController.showError("Fejl: \(error.localizedDescription)")
-        }
-
-        resetPipeline()
+        let elapsed = ContinuousClock.now - start
+        let ms = Int(elapsed.components.seconds) * 1000
+            + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+        await MetricsService.shared.record(phase: .modelCall, durationMs: ms, mode: mode.name, transport: "gemini-audio")
+        return result
     }
 
     // MARK: - Result Delivery
