@@ -19,6 +19,10 @@ final class InfoModeService {
     private(set) var newsBySource: [NewsHeadline.Source: [NewsHeadline]] = [:]
     private(set) var commute: CommuteEstimate?
     private(set) var commuteError: String?
+    /// Weather at the commute destination. Only populated when the user has set
+    /// an ad-hoc destination via the Hjem tile; the default home commute doesn't
+    /// fetch it because weather-at-home is already in the Vejr tile.
+    private(set) var destinationWeather: WeatherSnapshot?
     private(set) var systemInfo: SystemInfoSnapshot = SystemInfoSnapshot()
     private(set) var claudeStats: ClaudeStatsSnapshot = .empty
     private(set) var airQuality: AirQualitySnapshot?
@@ -28,6 +32,13 @@ final class InfoModeService {
 
     /// Convenience: DR headlines. Kept for call sites that expect it.
     var drHeadlines: [NewsHeadline] { newsBySource[.dr] ?? [] }
+
+    /// Latest known latitude from `LocationService`, exposed read-only for the
+    /// Cockpit sun tile's solstice-delta math. `nil` until CoreLocation has
+    /// delivered a fix (or the user has geocoded a manual city).
+    var latitudeForCockpit: Double? {
+        locationService.coordinate?.latitude
+    }
 
     // Async-action state for the manual buttons
     private(set) var isRunningSpeedtest = false
@@ -225,6 +236,21 @@ final class InfoModeService {
             )
             self.commute = estimate
             self.commuteError = nil
+            // Fetch weather at destination as a secondary, best-effort task so
+            // the commute tile can show "hvordan er vejret hvor jeg skal hen".
+            // Failure is silent — commute text is still useful without it.
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let snapshot = try await self.weatherService.fetch(
+                        for: estimate.destination.clLocationCoordinate,
+                        locationLabel: estimate.toLabel
+                    )
+                    await MainActor.run { self.destinationWeather = snapshot }
+                } catch {
+                    // Swallow — surface nothing instead of a confusing error.
+                }
+            }
         } catch let error as CommuteError {
             self.commute = nil
             self.commuteError = error.localizedDescription ?? "Ukendt ruteberegningsfejl"
@@ -237,6 +263,7 @@ final class InfoModeService {
     /// Reset to the default home commute. Re-fires the normal loader.
     func resetCustomCommute() async {
         customDestinationAddress = nil
+        destinationWeather = nil
         await loadCommuteTile()
     }
 

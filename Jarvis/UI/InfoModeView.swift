@@ -286,11 +286,52 @@ struct InfoModeView: View {
                             .foregroundStyle(Color.white.opacity(0.6))
                             .padding(.top, 2)
                     }
+                    if let delta = solsticeDeltaText() {
+                        Text(delta)
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.6))
+                    }
+                    if let holiday = nextHolidayText() {
+                        Text(holiday)
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.6))
+                    }
                 }
             } else {
                 placeholder("Henter sol…")
             }
         }
+    }
+
+    /// Compare today's actual daylight (from the weather snapshot) to the
+    /// daylight at the most recent solstice for the user's latitude, and
+    /// format it as a human-readable Danish delta.
+    ///
+    /// - Returns: e.g. "Dagen er 4t 12m længere siden vintersolhverv", or nil
+    ///   when the weather tile hasn't loaded yet.
+    private func solsticeDeltaText() -> String? {
+        guard let today = service.weather?.daily.first?.daylight else { return nil }
+        // Copenhagen fallback when CoreLocation hasn't fixed yet — keeps the
+        // tile useful on cold-open instead of vanishing for 10 s.
+        let latitude = service.latitudeForCockpit ?? 55.67
+        let last = SolarDateMath.lastSolstice(before: Date(), latitude: latitude)
+        let delta = today - last.daylightSeconds
+        let absDelta = abs(delta)
+        let hours = Int(absDelta) / 3600
+        let minutes = (Int(absDelta) % 3600) / 60
+        let direction = delta >= 0 ? "længere" : "kortere"
+        let since = last.isWinter ? "vintersolhverv" : "sommersolhverv"
+        return "Dagen er \(hours)t \(minutes)m \(direction) siden \(since)"
+    }
+
+    /// Next upcoming Danish holiday + a human-readable countdown in days.
+    private func nextHolidayText() -> String? {
+        guard let holiday = DanishHolidays.next() else { return nil }
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: holiday.date)).day ?? 0
+        if days == 0 { return "I dag: \(holiday.name)" }
+        if days == 1 { return "Næste helligdag: \(holiday.name) i morgen" }
+        return "Næste helligdag: \(holiday.name) om \(days) dage"
     }
 
     private static let hourMinute: DateFormatter = {
@@ -309,26 +350,58 @@ struct InfoModeView: View {
     private var weatherTile: some View {
         tile(title: "Vejr", icon: "cloud.sun.fill") {
             if let weather = service.weather {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: WeatherCode.symbol(for: weather.current.weatherCode))
-                        .font(.system(size: 30))
-                        .foregroundStyle(Color.white)
-                        .shadow(color: Color.white.opacity(0.6), radius: 5)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(Int(weather.current.temperature.rounded()))°")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text(weather.locationLabel)
-                            .font(.caption).foregroundStyle(Color.white.opacity(0.7))
-                        Text(WeatherCode.label(for: weather.current.weatherCode))
-                            .font(.caption).foregroundStyle(Color.white.opacity(0.55))
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: WeatherCode.symbol(for: weather.current.weatherCode))
+                            .font(.system(size: 30))
+                            .foregroundStyle(Color.white)
+                            .shadow(color: Color.white.opacity(0.6), radius: 5)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(Int(weather.current.temperature.rounded()))°")
+                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text(weather.locationLabel)
+                                .font(.caption).foregroundStyle(Color.white.opacity(0.7))
+                            Text(WeatherCode.label(for: weather.current.weatherCode))
+                                .font(.caption).foregroundStyle(Color.white.opacity(0.55))
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    // Secondary metrics line — feels-like, wind, humidity,
+                    // today's high/low all on one compact row so the tile
+                    // doesn't grow vertically. Uses caption2 so the extra
+                    // info reads as metadata, not as primary signal.
+                    weatherMetricsRow(weather)
                 }
             } else {
                 placeholder("Henter vejr…")
             }
         }
+    }
+
+    @ViewBuilder
+    private func weatherMetricsRow(_ weather: WeatherSnapshot) -> some View {
+        HStack(spacing: 10) {
+            weatherMetric(icon: "thermometer.medium", text: "føles \(Int(weather.current.feelsLike.rounded()))°")
+            weatherMetric(icon: "wind", text: "\(Int(weather.current.windSpeed.rounded())) m/s")
+            weatherMetric(icon: "humidity", text: "\(weather.current.humidity)%")
+            if let today = weather.daily.first {
+                weatherMetric(
+                    icon: "arrow.up.arrow.down",
+                    text: "\(Int(today.tempMin.rounded()))°/\(Int(today.tempMax.rounded()))°"
+                )
+            }
+        }
+    }
+
+    private func weatherMetric(icon: String, text: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.caption2).foregroundStyle(Color.white.opacity(0.65))
+            Text(text)
+                .font(.caption2).foregroundStyle(Color.white.opacity(0.8))
+        }
+        .fixedSize()
     }
 
     @State private var newsSource: NewsHeadline.Source = .dr
@@ -382,28 +455,110 @@ struct InfoModeView: View {
 
     private var commuteTile: some View {
         tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
-            HStack(alignment: .top, spacing: 14) {
-                commuteStatsColumn
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // Text column first — now full-width so we can afford bigger
+            // numbers and denser rows (ETA, destination weather, traffic
+            // chip). The map previously occupied the right third; it now
+            // sits at the bottom as a full-width strip.
+            commuteStatsColumn
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                if let commute = service.commute, !commute.routeCoordinates.isEmpty {
-                    CommuteMapView(
-                        origin: commute.origin,
-                        destination: commute.destination,
-                        coordinates: commute.routeCoordinates
-                    )
-                    .frame(width: 260, height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                    )
-                }
-            }
+            commuteChipsRow
+                .padding(.top, 4)
 
             destinationInputRow
-                .padding(.top, 10)
+                .padding(.top, 8)
+
+            if let commute = service.commute, !commute.routeCoordinates.isEmpty {
+                CommuteMapView(
+                    origin: commute.origin,
+                    destination: commute.destination,
+                    coordinates: commute.routeCoordinates
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                )
+                .padding(.top, 6)
+            }
         }
+    }
+
+    /// Live-traffic + destination-weather chips. Vejdirektoratet is always
+    /// shown (it's a stable external resource); the weather chip only appears
+    /// when the user has set an ad-hoc destination and we managed to fetch its
+    /// weather snapshot.
+    private var commuteChipsRow: some View {
+        HStack(spacing: 8) {
+            if let destWeather = service.destinationWeather {
+                destinationWeatherChip(destWeather)
+            }
+            vejdirektoratetChip
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func destinationWeatherChip(_ weather: WeatherSnapshot) -> some View {
+        Button {
+            // No-op on tap; the chip is purely informational. Future: open
+            // the full weather tile scoped to destination coord.
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: WeatherCode.symbol(for: weather.current.weatherCode))
+                    .font(.footnote)
+                    .foregroundStyle(Color.white)
+                Text("\(Int(weather.current.temperature.rounded()))° ved \(weather.locationLabel)")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 999, style: .continuous)
+                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Vejret ved destinationen: \(WeatherCode.label(for: weather.current.weatherCode))")
+    }
+
+    private var vejdirektoratetChip: some View {
+        Button {
+            if let url = URL(string: "https://trafikkort.vejdirektoratet.dk/index.html") {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "road.lanes")
+                    .font(.footnote)
+                    .foregroundStyle(Color.white)
+                Text("Live trafik (Vejdirektoratet)")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.85))
+                Image(systemName: "arrow.up.right")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 999, style: .continuous)
+                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Åbner trafikkort.vejdirektoratet.dk i browseren")
     }
 
     private var commuteTitle: String {
@@ -413,42 +568,71 @@ struct InfoModeView: View {
     @ViewBuilder
     private var commuteStatsColumn: some View {
         if let commute = service.commute {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(commute.prettyTravelTime)
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("til \(commute.toLabel)")
-                        .font(.caption).foregroundStyle(Color.white.opacity(0.65))
+                        .font(.subheadline)
+                        .foregroundStyle(Color.white.opacity(0.75))
+                        .lineLimit(1)
                 }
-                Text(commute.prettyDistance)
-                    .font(.caption).foregroundStyle(Color.white.opacity(0.7))
+                // Secondary line: arrival ETA + distance inline
+                HStack(spacing: 10) {
+                    Label {
+                        Text("Ankomst \(Self.etaFormatter.string(from: Date().addingTimeInterval(commute.expectedTravelTime)))")
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(Color.white.opacity(0.85))
+                    } icon: {
+                        Image(systemName: "clock")
+                            .font(.footnote).foregroundStyle(Color.white.opacity(0.7))
+                    }
+                    Text("· \(commute.prettyDistance)")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.75))
+                }
                 if commute.baselineTravelTime != nil {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: trafficIcon(commute.trafficCondition))
-                            .font(.caption).foregroundStyle(trafficColor(commute.trafficCondition))
+                            .font(.footnote)
+                            .foregroundStyle(trafficColor(commute.trafficCondition))
                         Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
-                            .font(.caption).foregroundStyle(trafficColor(commute.trafficCondition))
+                            .font(.footnote)
+                            .foregroundStyle(trafficColor(commute.trafficCondition))
                     }
                 }
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "bolt.car.fill")
-                        .font(.caption).foregroundStyle(Color.white)
+                        .font(.footnote).foregroundStyle(Color.white)
                     Text(String(format: "Tesla ~%.2f kWh", commute.teslaKWh))
-                        .font(.caption).foregroundStyle(Color.white)
+                        .font(.footnote).foregroundStyle(Color.white)
+                    Text("· ~\(Int((commute.teslaKWh * 3.5).rounded())) kr")
+                        .font(.footnote)
+                        .foregroundStyle(Color.white.opacity(0.6))
+                        .help("Ved 3,50 kr/kWh — ca. husholdnings-elpris")
                 }
                 Text("Fra \(commute.fromLabel)")
-                    .font(.caption).foregroundStyle(Color.white.opacity(0.55))
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.55))
                     .padding(.top, 2)
             }
         } else if let error = service.commuteError {
             Text(error)
-                .font(.caption).foregroundStyle(Color.white.opacity(0.65))
+                .font(.footnote).foregroundStyle(Color.white.opacity(0.75))
                 .multilineTextAlignment(.leading)
         } else {
             placeholder("Beregner rute…")
         }
     }
+
+    /// Short "HH:mm" formatter used for arrival-time text.
+    private static let etaFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        df.locale = Locale(identifier: "da_DK")
+        return df
+    }()
 
     private var destinationInputRow: some View {
         VStack(alignment: .leading, spacing: 6) {
