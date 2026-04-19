@@ -451,17 +451,19 @@ struct InfoModeView: View {
 
     private var commuteTile: some View {
         tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
-            // Horizontal split after Trafikinfo got its own top-level tile.
-            // The remaining Hjem content rebalances across two columns:
-            //   Left  — Pinnede destinationer (stacked) + "0 min til X"
-            //           stats + Live-trafik chip + input row.
+            // Compact two-column split:
+            //   Left  — stats + Live-trafik chip + motorvejsulykker list
+            //           + adresse-input. Pinnede destinationer are hidden
+            //           here (the top Trafikinfo tile carries the general
+            //           "what's happening" signal; this tile is focused on
+            //           the active route).
             //   Right — Map with charger legend, fills column height.
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 10) {
-                    pinnedDestinationsRow
                     commuteStatsColumn
                         .frame(maxWidth: .infinity, alignment: .leading)
                     commuteChipsRow
+                    motorwayAccidentsSection
                     destinationInputRow
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -469,6 +471,41 @@ struct InfoModeView: View {
                 commuteMapColumn
                     .frame(width: 340)
                     .frame(maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// Events in `service.trafficEvents` that are accidents specifically on
+    /// a motorway. Match either a European route code (E20, E45, …) or the
+    /// literal "motorvej" anywhere in the header/description. The broader
+    /// Trafikinfo tile at the top row still carries everything — this
+    /// section is a tighter "pay attention, this affects your drive" list.
+    private var motorwayAccidents: [TrafficEvent] {
+        let pattern = #"\bE\d+\b|motorvej"#
+        return service.trafficEvents.filter { event in
+            guard event.category == .accident else { return false }
+            let hay = "\(event.header) \(event.plainDescription)"
+            return hay.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    @ViewBuilder
+    private var motorwayAccidentsSection: some View {
+        let accidents = motorwayAccidents
+        if !accidents.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                        .font(.caption)
+                        .foregroundStyle(JarvisTheme.criticalGlow)
+                    Text("Ulykker på motorvejen (\(accidents.count))")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.9))
+                    Spacer(minLength: 0)
+                }
+                ForEach(accidents.prefix(3)) { event in
+                    trafficEventRow(event)
+                }
             }
         }
     }
