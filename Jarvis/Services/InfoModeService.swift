@@ -177,6 +177,23 @@ final class InfoModeService {
         self.systemInfo = snap
     }
 
+    /// Fast refresh for just the live performance / handling metrics (CPU,
+    /// power, thermal, WiFi bytes, Bluetooth). Called from the Cockpit on a
+    /// ~10-second loop while visible so the Ydelse + Handlinger sub-tiles
+    /// render real-time values. Merges the returned fields into `systemInfo`
+    /// so the slower `fetchBasics()` values (battery, RAM, hardware summary,
+    /// etc.) aren't clobbered.
+    func refreshLiveMetrics() async {
+        let live = await systemInfoService.fetchLiveMetrics()
+        self.systemInfo.cpuLoadPercent = live.cpuLoadPercent
+        self.systemInfo.powerDrawWatts = live.powerDrawWatts
+        self.systemInfo.thermalState = live.thermalState
+        self.systemInfo.wifiBytesReceived = live.wifiBytesReceived
+        self.systemInfo.wifiBytesSent = live.wifiBytesSent
+        self.systemInfo.bluetoothPoweredOn = live.bluetoothPoweredOn
+        self.systemInfo.bluetoothConnectedDevices = live.bluetoothConnectedDevices
+    }
+
     private func loadClaudeTile() async {
         let snap = await claudeStatsService.fetch()
         self.claudeStats = snap

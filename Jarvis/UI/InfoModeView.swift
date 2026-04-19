@@ -82,6 +82,16 @@ struct InfoModeView: View {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
             }
         }
+        // Live performance probes every 5 s: CPU load, power draw,
+        // thermal state, WiFi bytes, Bluetooth status. Short cadence so
+        // Ydelse + Handlinger feel responsive without hammering the
+        // slow probes that `refresh()` owns.
+        .task {
+            while !Task.isCancelled {
+                await service.refreshLiveMetrics()
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
     }
 
     // MARK: - Header (chat-family minimal chrome)
@@ -1328,6 +1338,9 @@ struct InfoModeView: View {
     }
 
     private func formatTokens(_ n: Int) -> String {
+        // Once we cross 1 000 millioner we switch to the Danish "milliard"
+        // label so "1.6 mia" reads natively instead of "1600M".
+        if n >= 1_000_000_000 { return String(format: "%.1f mia", Double(n) / 1_000_000_000) }
         if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
         if n >= 1_000 { return String(format: "%.0fK", Double(n) / 1_000) }
         return String(n)
@@ -1397,6 +1410,13 @@ struct InfoModeView: View {
 
     private var performanceSubTile: some View {
         subTile(title: "Ydelse", icon: "speedometer") {
+            // CPU first — most dynamic number on the tile.
+            if let cpu = service.systemInfo.cpuLoadPercent {
+                infoRow("CPU", value: String(format: "%.0f %%", cpu * 100))
+                miniUsageBar(label: "CPU", percent: cpu)
+            } else {
+                infoRow("CPU", value: "måler…")
+            }
             infoRow("RAM", value: ramLine)
             if let ramPct = ramUsedPercent {
                 miniUsageBar(label: "RAM", percent: ramPct)
@@ -1405,6 +1425,14 @@ struct InfoModeView: View {
             if let diskPct = diskUsedPercent {
                 miniUsageBar(label: "Disk", percent: diskPct)
             }
+            if let watts = service.systemInfo.powerDrawWatts {
+                infoRow("Strøm", value: String(format: "%.1f W", watts))
+            } else {
+                // When plugged in the draw isn't available from
+                // AppleSmartBattery; tell the user instead of showing —.
+                infoRow("Strøm", value: "tilsluttet")
+            }
+            infoRow("Termisk", value: thermalLabel)
         }
     }
 
@@ -1435,6 +1463,52 @@ struct InfoModeView: View {
                 .disabled(service.isRunningNetworkScan)
             }
 
+            // WiFi quality + cumulative RX/TX bytes on the WiFi interface.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: "wifi")
+                        .font(.caption2)
+                        .foregroundStyle(wifiQualityColor)
+                    Text("WiFi · \(service.systemInfo.wifi?.qualityLabel ?? "ingen")")
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.85))
+                }
+                if let rx = service.systemInfo.wifiBytesReceived,
+                   let tx = service.systemInfo.wifiBytesSent {
+                    Text("↓ \(formatBytes(rx)) · ↑ \(formatBytes(tx))")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.7))
+                }
+            }
+            .padding(.top, 4)
+
+            // Bluetooth: on/off + count + up to 2 device names.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: service.systemInfo.bluetoothPoweredOn ? "bolt.horizontal.fill" : "bolt.horizontal")
+                        .font(.caption2)
+                        .foregroundStyle(service.systemInfo.bluetoothPoweredOn
+                                         ? Color.white : Color.white.opacity(0.45))
+                    Text(bluetoothStatusLine)
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.85))
+                }
+                if !service.systemInfo.bluetoothConnectedDevices.isEmpty {
+                    ForEach(service.systemInfo.bluetoothConnectedDevices.prefix(2), id: \.self) { name in
+                        Text("· \(name)")
+                            .font(.caption2)
+                            .foregroundStyle(Color.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
+                    if service.systemInfo.bluetoothConnectedDevices.count > 2 {
+                        Text("+ \(service.systemInfo.bluetoothConnectedDevices.count - 2)")
+                            .font(.caption2)
+                            .foregroundStyle(Color.white.opacity(0.45))
+                    }
+                }
+            }
+            .padding(.top, 2)
+
             if let speedtest = service.systemInfo.speedtestSummary {
                 Text(speedtest)
                     .font(.caption2.monospaced())
@@ -1449,16 +1523,6 @@ struct InfoModeView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.white.opacity(0.75))
                     .padding(.top, 2)
-                ForEach(service.systemInfo.networkScan.prefix(3)) { device in
-                    Text(device.ip)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-                if service.systemInfo.networkScan.count > 3 {
-                    Text("+ \(service.systemInfo.networkScan.count - 3)")
-                        .font(.caption2)
-                        .foregroundStyle(Color.white.opacity(0.45))
-                }
             }
         }
     }
@@ -1675,6 +1739,47 @@ struct InfoModeView: View {
         else { return nil }
         let gb = 1_000_000_000.0
         return ((total - free) / gb, total / gb)
+    }
+
+    /// Danish label for `ProcessInfo.ThermalState` so the Ydelse tile reads
+    /// naturally. "Nominel" covers the 95% of the time case.
+    private var thermalLabel: String {
+        switch service.systemInfo.thermalState {
+        case .nominal:  return "Nominel"
+        case .fair:     return "Let belastet"
+        case .serious:  return "Høj belastning"
+        case .critical: return "Kritisk"
+        @unknown default: return "Ukendt"
+        }
+    }
+
+    /// Signal-strength glyph color for the WiFi row in the Handlinger tile.
+    private var wifiQualityColor: Color {
+        guard let rssi = service.systemInfo.wifi?.rssi else { return Color.white.opacity(0.35) }
+        if rssi >= -55 { return Color.white }
+        if rssi >= -65 { return Color.white.opacity(0.85) }
+        if rssi >= -75 { return JarvisTheme.warningGlow }
+        return JarvisTheme.criticalGlow
+    }
+
+    /// Human-readable Bluetooth state + connected count, e.g.
+    /// "Bluetooth · 2 enheder" or "Bluetooth · slukket".
+    private var bluetoothStatusLine: String {
+        guard service.systemInfo.bluetoothPoweredOn else { return "Bluetooth · slukket" }
+        let count = service.systemInfo.bluetoothConnectedDevices.count
+        if count == 0 { return "Bluetooth · tændt, ingen forbundet" }
+        if count == 1 { return "Bluetooth · 1 enhed" }
+        return "Bluetooth · \(count) enheder"
+    }
+
+    /// Short-form byte count: 1.2 GB, 540 MB, 8.4 KB. Uses decimal (SI) units
+    /// because network counters are reported in those by convention.
+    private func formatBytes(_ n: UInt64) -> String {
+        let value = Double(n)
+        if value >= 1_000_000_000 { return String(format: "%.1f GB", value / 1_000_000_000) }
+        if value >= 1_000_000     { return String(format: "%.0f MB", value / 1_000_000) }
+        if value >= 1_000         { return String(format: "%.0f KB", value / 1_000) }
+        return "\(n) B"
     }
 
     private var hardwareLine: String? {
