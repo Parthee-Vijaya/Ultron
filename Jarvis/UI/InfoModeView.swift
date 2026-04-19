@@ -48,7 +48,7 @@ struct InfoModeView: View {
                 .padding(.leading, 4)
             if let last = service.lastRefresh {
                 Text("opdateret \(timeAgo(last))")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(JarvisTheme.textMuted)
             }
             Spacer()
@@ -111,33 +111,33 @@ struct InfoModeView: View {
                             .lineLimit(2)
                         Text(event.prettyStart)
                             .font(.caption)
-                            .foregroundStyle(JarvisTheme.brightCyan)
+                            .foregroundStyle(Color.white)
                         if let minutes = event.minutesUntilStart, minutes > 0 {
                             Text("om \(minutes) min")
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.7))
                         }
                         if let location = event.location, !location.isEmpty {
                             HStack(spacing: 3) {
                                 Image(systemName: "mappin.and.ellipse")
-                                    .font(.caption2)
+                                    .font(.caption)
                                 Text(location)
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .lineLimit(1)
                             }
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            .foregroundStyle(Color.white.opacity(0.55))
                         }
                     }
                 } else {
                     Text("Ingen events de næste 7 dage")
-                        .font(.caption2)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.6))
                 }
             case .notDetermined:
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Giv adgang til din kalender for at se næste event her.")
-                        .font(.caption2)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.7))
                     Button("Giv adgang") {
                         Task { await service.requestCalendarAccess() }
                     }
@@ -145,8 +145,8 @@ struct InfoModeView: View {
                 }
             case .denied, .writeOnly:
                 Text("Kalender-adgang blokeret i System-indstillinger.")
-                    .font(.caption2)
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.55))
             }
         }
     }
@@ -162,7 +162,7 @@ struct InfoModeView: View {
                                     .font(.system(size: 26, weight: .bold, design: .rounded))
                                     .foregroundStyle(.white)
                                 Text("AQI")
-                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                    .font(.caption).foregroundStyle(Color.white.opacity(0.55))
                             }
                             Text(air.aqiBand.label)
                                 .font(.caption)
@@ -175,7 +175,7 @@ struct InfoModeView: View {
                                     .font(.system(size: 22, weight: .bold, design: .rounded))
                                     .foregroundStyle(.white)
                                 Text("UV")
-                                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                    .font(.caption).foregroundStyle(Color.white.opacity(0.55))
                             }
                             Text(air.uvBand.label)
                                 .font(.caption)
@@ -184,8 +184,8 @@ struct InfoModeView: View {
                     }
                     if let pm25 = air.pm25 {
                         Text(String(format: "PM2.5: %.1f µg/m³", pm25))
-                            .font(.caption2)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.6))
                     }
                 }
             } else {
@@ -200,18 +200,18 @@ struct InfoModeView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: m.phase.symbol)
                     .font(.system(size: 36))
-                    .foregroundStyle(JarvisTheme.brightCyan)
-                    .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 6)
+                    .foregroundStyle(Color.white)
+                    .shadow(color: Color.white.opacity(0.6), radius: 6)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.phase.label)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.white)
                     Text("\(m.illuminationPercent) % oplyst")
                         .font(.caption)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .foregroundStyle(Color.white.opacity(0.7))
                     Text("Næste fuldmåne \(Self.fullMoonFormatter.string(from: m.nextFullMoon))")
-                        .font(.caption2)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.55))
                 }
                 Spacer(minLength: 0)
             }
@@ -220,21 +220,21 @@ struct InfoModeView: View {
 
     private func aqiColor(_ band: AirQualitySnapshot.AQIBand) -> Color {
         switch band {
-        case .excellent, .good: return JarvisTheme.brightCyan
-        case .moderate:         return JarvisTheme.neonCyan
+        case .excellent, .good: return Color.white
+        case .moderate:         return Color.white
         case .poor:             return JarvisTheme.warningGlow
         case .veryPoor, .extreme: return JarvisTheme.criticalGlow
-        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        case .unknown:          return Color.white.opacity(0.55)
         }
     }
 
     private func uvColor(_ band: AirQualitySnapshot.UVBand) -> Color {
         switch band {
-        case .low:              return JarvisTheme.brightCyan
-        case .moderate:         return JarvisTheme.neonCyan
+        case .low:              return Color.white
+        case .moderate:         return Color.white
         case .high:             return JarvisTheme.warningGlow
         case .veryHigh, .extreme: return JarvisTheme.criticalGlow
-        case .unknown:          return JarvisTheme.neonCyan.opacity(0.55)
+        case .unknown:          return Color.white.opacity(0.55)
         }
     }
 
@@ -251,22 +251,22 @@ struct InfoModeView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Image(systemName: "sunrise.fill")
-                            .foregroundStyle(JarvisTheme.brightCyan)
+                            .foregroundStyle(Color.white)
                         Text(Self.hourMinute.string(from: sun.sunrise))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.white)
                     }
                     HStack(spacing: 8) {
                         Image(systemName: "sunset.fill")
-                            .foregroundStyle(JarvisTheme.neonCyan)
+                            .foregroundStyle(Color.white)
                         Text(Self.hourMinute.string(from: sun.sunset))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.white)
                     }
                     if let daylight = service.weather?.daily.first?.daylight {
                         Text("Dagslys \(Self.prettyDaylight(daylight))")
-                            .font(.caption2)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.6))
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.6))
                             .padding(.top, 2)
                     }
                 }
@@ -295,16 +295,16 @@ struct InfoModeView: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: WeatherCode.symbol(for: weather.current.weatherCode))
                         .font(.system(size: 30))
-                        .foregroundStyle(JarvisTheme.brightCyan)
-                        .shadow(color: JarvisTheme.neonCyan.opacity(0.6), radius: 5)
+                        .foregroundStyle(Color.white)
+                        .shadow(color: Color.white.opacity(0.6), radius: 5)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(Int(weather.current.temperature.rounded()))°")
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                         Text(weather.locationLabel)
-                            .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                            .font(.caption).foregroundStyle(Color.white.opacity(0.7))
                         Text(WeatherCode.label(for: weather.current.weatherCode))
-                            .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            .font(.caption).foregroundStyle(Color.white.opacity(0.55))
                     }
                     Spacer(minLength: 0)
                 }
@@ -334,8 +334,8 @@ struct InfoModeView: View {
                     let items = service.newsBySource[newsSource] ?? []
                     if items.isEmpty {
                         Text("Ingen nyheder lige nu")
-                            .font(.caption2)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.55))
                     } else {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(items.prefix(3)) { item in
@@ -344,7 +344,7 @@ struct InfoModeView: View {
                                 } label: {
                                     HStack(alignment: .top, spacing: 6) {
                                         Circle()
-                                            .fill(JarvisTheme.neonCyan.opacity(0.6))
+                                            .fill(Color.white.opacity(0.6))
                                             .frame(width: 4, height: 4).padding(.top, 5)
                                         Text(item.title)
                                             .font(.caption).foregroundStyle(.white.opacity(0.9))
@@ -379,7 +379,7 @@ struct InfoModeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(JarvisTheme.neonCyan.opacity(0.35), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
                     )
                 }
             }
@@ -402,31 +402,31 @@ struct InfoModeView: View {
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("til \(commute.toLabel)")
-                        .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                        .font(.caption).foregroundStyle(Color.white.opacity(0.65))
                 }
                 Text(commute.prettyDistance)
-                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    .font(.caption).foregroundStyle(Color.white.opacity(0.7))
                 if commute.baselineTravelTime != nil {
                     HStack(spacing: 4) {
                         Image(systemName: trafficIcon(commute.trafficCondition))
-                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                            .font(.caption).foregroundStyle(trafficColor(commute.trafficCondition))
                         Text("\(commute.trafficCondition.label) · \(commute.prettyTrafficDelay)")
-                            .font(.caption2).foregroundStyle(trafficColor(commute.trafficCondition))
+                            .font(.caption).foregroundStyle(trafficColor(commute.trafficCondition))
                     }
                 }
                 HStack(spacing: 4) {
                     Image(systemName: "bolt.car.fill")
-                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                        .font(.caption).foregroundStyle(Color.white)
                     Text(String(format: "Tesla ~%.2f kWh", commute.teslaKWh))
-                        .font(.caption2).foregroundStyle(JarvisTheme.brightCyan)
+                        .font(.caption).foregroundStyle(Color.white)
                 }
                 Text("Fra \(commute.fromLabel)")
-                    .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    .font(.caption).foregroundStyle(Color.white.opacity(0.55))
                     .padding(.top, 2)
             }
         } else if let error = service.commuteError {
             Text(error)
-                .font(.caption2).foregroundStyle(JarvisTheme.neonCyan.opacity(0.65))
+                .font(.caption).foregroundStyle(Color.white.opacity(0.65))
                 .multilineTextAlignment(.leading)
         } else {
             placeholder("Beregner rute…")
@@ -437,7 +437,7 @@ struct InfoModeView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.caption).foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    .font(.caption).foregroundStyle(Color.white.opacity(0.7))
                 TextField("Indtast adresse…", text: $customDestination)
                     .textFieldStyle(.roundedBorder)
                     .font(.caption)
@@ -447,11 +447,11 @@ struct InfoModeView: View {
                     if service.isRunningCustomCommute {
                         ProgressView().controlSize(.mini)
                     } else {
-                        Text("Beregn").font(.caption.weight(.semibold))
+                        Text("Beregn").font(.footnote.weight(.semibold))
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(JarvisTheme.neonCyan)
+                .tint(Color.white)
                 .controlSize(.small)
                 .disabled(customDestination.trimmingCharacters(in: .whitespaces).isEmpty
                           || service.isRunningCustomCommute)
@@ -470,8 +470,8 @@ struct InfoModeView: View {
             }
             if let active = service.customDestinationAddress {
                 Text("Beregnet til: \(active)")
-                    .font(.caption2)
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.55))
             }
         }
     }
@@ -494,11 +494,11 @@ struct InfoModeView: View {
 
     private func trafficColor(_ condition: CommuteEstimate.TrafficCondition) -> Color {
         switch condition {
-        case .free:    return JarvisTheme.brightCyan
-        case .light:   return JarvisTheme.neonCyan
+        case .free:    return Color.white
+        case .light:   return Color.white
         case .heavy:   return JarvisTheme.warningGlow
         case .severe:  return JarvisTheme.criticalGlow
-        case .unknown: return JarvisTheme.neonCyan.opacity(0.5)
+        case .unknown: return Color.white.opacity(0.5)
         }
     }
 
@@ -533,13 +533,13 @@ struct InfoModeView: View {
             if !s.recentProjects.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Seneste projekter")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.7))
                     ForEach(s.recentProjects) { p in
                         HStack(spacing: 6) {
                             Image(systemName: "folder.fill")
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.55))
                             Text(p.label)
                                 .font(.caption)
                                 .foregroundStyle(.white.opacity(0.9))
@@ -547,11 +547,11 @@ struct InfoModeView: View {
                                 .truncationMode(.middle)
                             Spacer(minLength: 6)
                             Text(formatTokens(p.tokens))
-                                .font(.caption.monospaced())
-                                .foregroundStyle(JarvisTheme.brightCyan)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(Color.white)
                             Text("· \(relativeDay(p.lastUsed))")
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.55))
                         }
                     }
                 }
@@ -561,25 +561,25 @@ struct InfoModeView: View {
             if !s.latestSessionTools.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Top tools (seneste session)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.7))
                     HStack(spacing: 6) {
                         ForEach(s.latestSessionTools) { tool in
                             HStack(spacing: 3) {
                                 Image(systemName: toolIcon(tool.name))
-                                    .font(.caption2)
+                                    .font(.caption)
                                 Text("\(tool.name)")
-                                    .font(.caption2)
+                                    .font(.caption)
                                 Text("\(tool.count)")
                                     .font(.caption2.weight(.semibold).monospaced())
-                                    .foregroundStyle(JarvisTheme.brightCyan)
+                                    .foregroundStyle(Color.white)
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule()
                                     .fill(JarvisTheme.surfaceBase.opacity(0.6))
-                                    .overlay(Capsule().stroke(JarvisTheme.neonCyan.opacity(0.25), lineWidth: 0.5))
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 0.5))
                             )
                             .foregroundStyle(.white.opacity(0.85))
                         }
@@ -591,8 +591,8 @@ struct InfoModeView: View {
             if !s.modelBreakdown.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Modeller (all-time)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.7))
                     ForEach(s.modelBreakdown.prefix(4)) { m in
                         HStack(spacing: 6) {
                             Text(prettyModel(m.name))
@@ -602,11 +602,11 @@ struct InfoModeView: View {
                             modelBar(model: m)
                             Spacer(minLength: 6)
                             Text(formatTokens(m.tokens))
-                                .font(.caption.monospaced())
-                                .foregroundStyle(JarvisTheme.brightCyan)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(Color.white)
                             Text(String(format: "cache %.0f%%", m.cacheRatio * 100))
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.55))
                                 .frame(width: 60, alignment: .trailing)
                         }
                     }
@@ -617,15 +617,15 @@ struct InfoModeView: View {
             if s.longestSessionMessages > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "stopwatch")
-                        .font(.caption2)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.7))
                     Text("Længste session: \(s.longestSessionMessages) beskeder")
-                        .font(.caption2)
-                        .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.7))
                     if let date = s.longestSessionDate {
                         Text("· \(firstSessionFormatter.string(from: date))")
-                            .font(.caption2)
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.5))
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.5))
                     }
                 }
                 .padding(.top, 4)
@@ -646,9 +646,9 @@ struct InfoModeView: View {
             Capsule()
                 .fill(JarvisTheme.surfaceBase.opacity(0.6))
             Capsule()
-                .fill(JarvisTheme.neonCyan)
+                .fill(Color.white)
                 .frame(width: barWidth * CGFloat(share))
-                .shadow(color: JarvisTheme.neonCyan.opacity(0.5), radius: 2)
+                .shadow(color: Color.white.opacity(0.5), radius: 2)
         }
         .frame(width: barWidth, height: 5)
     }
@@ -710,7 +710,7 @@ struct InfoModeView: View {
         let barColor: Color = {
             if fraction >= 0.9 { return JarvisTheme.criticalGlow }
             if fraction >= 0.7 { return JarvisTheme.warningGlow }
-            return JarvisTheme.neonCyan
+            return Color.white
         }()
         // Bar width is pinned to the outer panel minus padding/other columns —
         // hardcoded to keep the hosting-controller's content size stable (see
@@ -719,8 +719,8 @@ struct InfoModeView: View {
         return VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.7))
                 Spacer()
                 Text(budgetRow(used: used, limit: limit))
                     .font(.caption2.monospaced())
@@ -812,7 +812,7 @@ struct InfoModeView: View {
                               systemImage: "speedometer")
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(JarvisTheme.neonCyan)
+                    .tint(Color.white)
                     .controlSize(.small)
                     .disabled(service.isRunningSpeedtest)
 
@@ -829,8 +829,8 @@ struct InfoModeView: View {
 
                 if let speedtest = service.systemInfo.speedtestSummary {
                     Text(speedtest)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(JarvisTheme.brightCyan)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(Color.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(JarvisTheme.surfaceBase.opacity(0.6))
@@ -840,23 +840,23 @@ struct InfoModeView: View {
                 if !service.systemInfo.networkScan.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(service.systemInfo.networkScan.count) enheder fundet")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.7))
                         ForEach(service.systemInfo.networkScan.prefix(8)) { device in
                             HStack {
                                 Text(device.ip)
-                                    .font(.caption.monospaced())
+                                    .font(.footnote.monospaced())
                                     .foregroundStyle(.white.opacity(0.85))
                                 Spacer()
                                 Text(device.mac)
                                     .font(.caption2.monospaced())
-                                    .foregroundStyle(JarvisTheme.neonCyan.opacity(0.55))
+                                    .foregroundStyle(Color.white.opacity(0.55))
                             }
                         }
                         if service.systemInfo.networkScan.count > 8 {
                             Text("+ \(service.systemInfo.networkScan.count - 8) yderligere")
-                                .font(.caption2)
-                                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.5))
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.5))
                         }
                     }
                 }
@@ -873,40 +873,43 @@ struct InfoModeView: View {
         fullWidth: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundStyle(JarvisTheme.neonCyan)
+                    .font(.callout)
+                    .foregroundStyle(Color.white.opacity(0.85))
                 Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(JarvisTheme.brightCyan)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.white)
                 Spacer(minLength: 0)
             }
             content()
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: fullWidth ? .infinity : nil, alignment: .leading)
-        // Natural height only. A previous .frame(maxHeight: .infinity) was
-        // used for row-equal-height visual alignment, but combined with the
-        // outer hosting-controller's preferredContentSize it created a layout
-        // feedback loop that crashed the app (see InfoModeView.body comment).
+        // v1.4 Fase 2c — translucent card, white content. `Color.white.opacity(0.06)`
+        // over the navy chat backdrop reads as a subtle glass card without
+        // clashing with the shell's gradient. Hairline is also white so
+        // nothing cyan/amber leaks into the tile layer.
         .background {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(JarvisTheme.surfaceElevated.opacity(0.65))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(JarvisTheme.neonCyan.opacity(0.25), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                )
         }
     }
 
     private func infoRow(_ label: String, value: String?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(JarvisTheme.neonCyan.opacity(0.7))
-                .frame(width: 60, alignment: .leading)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.white.opacity(0.6))
+                .frame(width: 70, alignment: .leading)
             Text(value ?? "—")
-                .font(.caption.monospaced())
-                .foregroundStyle(.white.opacity(0.9))
+                .font(.footnote.monospaced())
+                .foregroundStyle(Color.white.opacity(0.95))
                 .lineLimit(2)
         }
     }
@@ -914,7 +917,7 @@ struct InfoModeView: View {
     private func placeholder(_ text: String) -> some View {
         HStack(spacing: 6) {
             ProgressView().controlSize(.mini)
-            Text(text).font(.caption).foregroundStyle(.secondary)
+            Text(text).font(.footnote).foregroundStyle(Color.white.opacity(0.6))
         }
     }
 

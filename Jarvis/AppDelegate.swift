@@ -179,6 +179,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // isn't interrupted by a permission prompt.
         Task { await hudController.speechService.requestAuthorization() }
 
+        // v1.4 Fase 2c: always ask for location on startup so Cockpit's
+        // weather / commute / sun tiles have fresh GPS-driven data without
+        // waiting for the user to open Info mode. No-op after the first
+        // grant (macOS dedupes repeat authorization requests).
+        locationService.requestAuthorization()
+        Task { _ = await locationService.refresh() }
+
         // Wire the Uptodate + Info panel data sources.
         hudController.updatesService = updatesService
         hudController.infoModeService = infoModeService

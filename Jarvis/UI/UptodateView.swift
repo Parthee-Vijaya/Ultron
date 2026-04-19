@@ -37,7 +37,7 @@ struct UptodateView: View {
                 .padding(.leading, 4)
             if let last = service.lastRefresh {
                 Text("opdateret \(timeAgo(last))")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(JarvisTheme.textMuted)
             }
             Spacer()
@@ -109,7 +109,7 @@ struct UptodateView: View {
                         } label: {
                             HStack(alignment: .top, spacing: 6) {
                                 Circle()
-                                    .fill(JarvisTheme.neonCyan.opacity(0.5))
+                                    .fill(Color.white.opacity(0.5))
                                     .frame(width: 4, height: 4)
                                     .padding(.top, 5)
                                 Text(item.title)
@@ -151,7 +151,7 @@ struct UptodateView: View {
                             HStack(alignment: .top, spacing: 8) {
                                 Text(String(event.year))
                                     .font(.caption.monospacedDigit().weight(.semibold))
-                                    .foregroundStyle(JarvisTheme.brightCyan)
+                                    .foregroundStyle(Color.white)
                                     .frame(width: 44, alignment: .leading)
                                     .padding(.top, 1)
                                 Text(event.text)
@@ -182,10 +182,10 @@ struct UptodateView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.caption)
-                    .foregroundStyle(JarvisTheme.neonCyan)
+                    .foregroundStyle(Color.white)
                 Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(JarvisTheme.brightCyan)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.white)
                 Spacer(minLength: 0)
             }
             content()
@@ -196,7 +196,7 @@ struct UptodateView: View {
         .background {
             RoundedRectangle(cornerRadius: 10)
                 .fill(JarvisTheme.surfaceElevated.opacity(0.65))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(JarvisTheme.neonCyan.opacity(0.25), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25), lineWidth: 1))
         }
     }
 
