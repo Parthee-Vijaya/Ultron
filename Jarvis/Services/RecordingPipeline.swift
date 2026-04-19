@@ -302,6 +302,12 @@ class RecordingPipeline {
                 LoggingService.shared.log("Text insertion failed, showing in HUD", level: .warning)
                 hudController.showResult(text)
             }
+            // v1.3: Dictation (and any future mode that opts in) also writes
+            // the transcription to the clipboard AND Notes.app so there's a
+            // persistent record. Fire-and-forget — shouldn't delay the paste.
+            if mode.persistToNotes {
+                DictationPersistence.save(text)
+            }
         case .hud:
             LoggingService.shared.log("→ HUD showResult (\(text.prefix(80))...)")
             hudController.showResult(text)

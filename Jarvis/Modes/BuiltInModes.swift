@@ -13,7 +13,8 @@ enum BuiltInModes {
         maxTokens: 2048,
         isBuiltIn: true,
         icon: "mic.fill",
-        inputKind: .voice
+        inputKind: .voice,
+        persistToNotes: true
     )
 
     static let vibeCode = Mode(
