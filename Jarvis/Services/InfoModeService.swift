@@ -59,6 +59,19 @@ final class InfoModeService {
     /// next manual refresh.
     private(set) var customDestinationAddress: String?
 
+    /// Commute estimates to the user's pinned destinations, computed in
+    /// parallel on each refresh. Shown side-by-side in the Hjem tile when
+    /// no ad-hoc custom destination is active. Keyed by the pinned entry so
+    /// the UI can render them in `pinnedDestinations` order without losing
+    /// track of partial failures (missing key => geocode/route failed).
+    private(set) var pinnedCommutes: [PinnedDestination: CommuteEstimate] = [:]
+
+    /// User-configurable list; defaults to two Tesla-friendly addresses.
+    /// Persisted via UserDefaults as JSON so Settings can edit them later.
+    private(set) var pinnedDestinations: [PinnedDestination] = PinnedDestination.defaults
+
+    private static let pinnedDestinationsKey = "cockpit.pinnedDestinations"
+
     private let locationService: LocationService
     private let weatherService = WeatherService()
     private let newsService = NewsService()
@@ -68,7 +81,13 @@ final class InfoModeService {
     private let airQualityService = AirQualityService()
     private let calendarService = CalendarService()
     private let trafficEventsService = TrafficEventsService()
+    private let chargerService = ChargerService()
     private let cache = InfoCache()
+
+    /// EV charger overlays for the Hjem map. 24 h cache in the service.
+    /// Denmark-wide — MapKit clips to the visible rect automatically, so we
+    /// don't do client-side filtering here.
+    private(set) var chargers: [ChargerLocation] = []
 
     /// Guards against concurrent `refresh` calls. The view calls `.task` on appear
     /// which can fire multiple times during SwiftUI state churn.
@@ -76,6 +95,29 @@ final class InfoModeService {
 
     init(locationService: LocationService) {
         self.locationService = locationService
+        self.pinnedDestinations = Self.loadPinnedDestinations()
+    }
+
+    /// Read the pinned destinations JSON blob from UserDefaults. Falls back
+    /// to the seed list if the key is missing or decoding fails (e.g. after
+    /// a schema change).
+    private static func loadPinnedDestinations() -> [PinnedDestination] {
+        guard let data = UserDefaults.standard.data(forKey: pinnedDestinationsKey) else {
+            return PinnedDestination.defaults
+        }
+        let decoded = try? JSONDecoder().decode([PinnedDestination].self, from: data)
+        return decoded ?? PinnedDestination.defaults
+    }
+
+    /// Persist the current pinned-destinations list to UserDefaults. Called
+    /// from Settings (future) when the user edits the list.
+    func setPinnedDestinations(_ list: [PinnedDestination]) {
+        self.pinnedDestinations = list
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: Self.pinnedDestinationsKey)
+        }
+        // Re-fill with fresh estimates if we're in home mode.
+        Task { await self.loadPinnedCommutesTile() }
     }
 
     func refresh(force: Bool = false) async {
@@ -112,9 +154,11 @@ final class InfoModeService {
                 group.addTask { await self.loadWeatherTile() }
                 group.addTask { await self.loadNewsTile() }
                 group.addTask { await self.loadCommuteTile() }
+                group.addTask { await self.loadPinnedCommutesTile() }
                 group.addTask { await self.loadAirQualityTile() }
                 group.addTask { await self.loadCalendarTile() }
                 group.addTask { await self.loadTrafficEventsTile() }
+                group.addTask { await self.loadChargersTile() }
             }
             await MainActor.run {
                 self.lastRefresh = Date()
@@ -199,6 +243,79 @@ final class InfoModeService {
         }
     }
 
+    /// Compute commute estimates for each `pinnedDestinations` entry in
+    /// parallel and publish the successful ones. Partial failures are fine —
+    /// the map key simply won't exist for that destination, which the UI
+    /// renders as "no card". Only runs when the user is in default home mode;
+    /// otherwise we hide the pinned row to keep the tile focused on the
+    /// ad-hoc route.
+    private func loadPinnedCommutesTile() async {
+        guard customDestinationAddress == nil else {
+            self.pinnedCommutes = [:]
+            return
+        }
+        guard !pinnedDestinations.isEmpty else {
+            self.pinnedCommutes = [:]
+            return
+        }
+
+        // Resolve origin once — live location if granted, else the same home
+        // fallback `recomputeCommute(to:)` uses, so all N fan-out calls share
+        // a single starting point.
+        let resolvedOrigin: (CLLocationCoordinate2D, String)?
+        if let live = await locationService.refreshWithCity() {
+            resolvedOrigin = live
+        } else {
+            resolvedOrigin = await originFallback()
+        }
+        guard let (coord, label) = resolvedOrigin else {
+            self.pinnedCommutes = [:]
+            return
+        }
+
+        let destinations = pinnedDestinations
+        let service = commuteService
+        // Run all N estimates concurrently. Each task returns an optional
+        // (destination, estimate) pair — nil when that particular route
+        // failed, which we silently drop.
+        let results: [(PinnedDestination, CommuteEstimate)] = await withTaskGroup(
+            of: (PinnedDestination, CommuteEstimate)?.self
+        ) { group in
+            for dest in destinations {
+                group.addTask {
+                    do {
+                        let est = try await service.estimate(
+                            from: coord,
+                            originLabel: label,
+                            toAddress: dest.address
+                        )
+                        return (dest, est)
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+            var collected: [(PinnedDestination, CommuteEstimate)] = []
+            for await result in group {
+                if let result { collected.append(result) }
+            }
+            return collected
+        }
+
+        var map: [PinnedDestination: CommuteEstimate] = [:]
+        for (dest, est) in results { map[dest] = est }
+        self.pinnedCommutes = map
+    }
+
+    /// Load EV charger overlays (Tesla Superchargers + Clever if the user
+    /// has supplied an OCM API key). The service caches for 24 h so even
+    /// though we fire this on every refresh, the actual network call is
+    /// rare. Failures are swallowed — missing chargers aren't an error
+    /// state worth exposing on the main Cockpit surface.
+    private func loadChargersTile() async {
+        self.chargers = await chargerService.fetchAll()
+    }
+
     /// Fetch Vejdirektoratet's live events feed and re-filter it for the
     /// current context — events near the user by default, or along the
     /// custom-destination route when one is set. Fires on normal refresh
@@ -232,7 +349,11 @@ final class InfoModeService {
         } else {
             origin = LocationService.naestvedCoordinate
         }
-        let filtered = events.nearby(origin, withinKm: 25)
+        // 50 km radius so events in the next town over still surface on the
+        // Hjem tile. Denmark is small — this still ends up as a focused list
+        // because the underlying feed usually only carries 50–100 active
+        // events across the whole country.
+        let filtered = events.nearby(origin, withinKm: 50)
         self.trafficEvents = Array(filtered.prefix(6))
         self.trafficEventsScope = .nearby
     }
@@ -265,6 +386,10 @@ final class InfoModeService {
         defer { isRunningCustomCommute = false }
 
         self.customDestinationAddress = trimmed
+        // Ad-hoc route takes over the Hjem tile; drop pinned-destination
+        // cards so the user's old numbers don't linger alongside the new
+        // focused route.
+        self.pinnedCommutes = [:]
 
         let resolvedOrigin: (CLLocationCoordinate2D, String)?
         if let live = await locationService.refreshWithCity() {
@@ -328,6 +453,8 @@ final class InfoModeService {
         await loadCommuteTile()
         // Re-scope traffic events back to "near me" now the route is gone.
         await loadTrafficEventsTile()
+        // Refill pinned-destination cards now we're back in home mode.
+        await loadPinnedCommutesTile()
     }
 
     /// Geocode fallback for when CoreLocation has no fix. Uses the home address

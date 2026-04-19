@@ -467,58 +467,179 @@ struct InfoModeView: View {
 
             trafficEventsSection
 
+            pinnedDestinationsRow
+
             destinationInputRow
                 .padding(.top, 8)
 
             if let commute = service.commute, !commute.routeCoordinates.isEmpty {
-                CommuteMapView(
-                    origin: commute.origin,
-                    destination: commute.destination,
-                    coordinates: commute.routeCoordinates
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.30), lineWidth: 1)
-                )
+                VStack(alignment: .leading, spacing: 4) {
+                    CommuteMapView(
+                        origin: commute.origin,
+                        destination: commute.destination,
+                        coordinates: commute.routeCoordinates,
+                        chargers: service.chargers
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                    )
+                    if !service.chargers.isEmpty {
+                        chargerLegend
+                    }
+                }
                 .padding(.top, 6)
             }
         }
     }
 
     /// Compact list of Vejdirektoratet events near the user or along the
-    /// active route. Hidden entirely when the feed has nothing to say.
+    /// active route. When the filter returns empty but we've already done
+    /// at least one refresh cycle, we show a "ingen hændelser" placeholder
+    /// so the user can tell the integration is alive, it just has nothing
+    /// to report.
     @ViewBuilder
     private var trafficEventsSection: some View {
         if !service.trafficEvents.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.85))
-                    Text(trafficEventsHeader)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.white.opacity(0.85))
-                    Spacer(minLength: 0)
-                    Text("Kilde: Vejdirektoratet")
-                        .font(.caption2)
-                        .foregroundStyle(Color.white.opacity(0.45))
-                }
+                trafficEventsHeaderRow
                 ForEach(service.trafficEvents.prefix(4)) { event in
                     trafficEventRow(event)
                 }
             }
             .padding(.top, 8)
+        } else if service.lastRefresh != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                trafficEventsHeaderRow
+                Text(service.trafficEventsScope == .route
+                     ? "Ingen aktuelle hændelser på ruten."
+                     : "Ingen aktuelle hændelser i nærheden.")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private var trafficEventsHeaderRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.85))
+            Text(trafficEventsHeader)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.white.opacity(0.85))
+            Spacer(minLength: 0)
+            Text("Kilde: Vejdirektoratet")
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.45))
         }
     }
 
     private var trafficEventsHeader: String {
+        let count = service.trafficEvents.count
         switch service.trafficEventsScope {
-        case .nearby: return "Trafikinfo i nærheden (\(service.trafficEvents.count))"
-        case .route:  return "Trafikinfo på ruten (\(service.trafficEvents.count))"
+        case .nearby:
+            return count == 0 ? "Trafikinfo i nærheden" : "Trafikinfo i nærheden (\(count))"
+        case .route:
+            return count == 0 ? "Trafikinfo på ruten" : "Trafikinfo på ruten (\(count))"
         }
+    }
+
+    /// Compact row of commute cards for the user's pinned destinations.
+    /// Visible only in home mode — once the user types an ad-hoc address the
+    /// row hides so the tile stays focused on the single active route.
+    /// Missing entries (geocode/routing failure) simply don't render; we
+    /// never surface an error because the main commute row already owns
+    /// that UI surface.
+    @ViewBuilder
+    private var pinnedDestinationsRow: some View {
+        if service.customDestinationAddress == nil && !service.pinnedCommutes.isEmpty {
+            let cards = service.pinnedDestinations.compactMap { dest -> (PinnedDestination, CommuteEstimate)? in
+                guard let est = service.pinnedCommutes[dest] else { return nil }
+                return (dest, est)
+            }
+            if !cards.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.85))
+                        Text("Pinnede destinationer")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                        Spacer(minLength: 0)
+                    }
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(cards, id: \.0.id) { (dest, est) in
+                            pinnedDestinationCard(destination: dest, estimate: est)
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    /// Single pinned-destination card. Styled like the translucent chip
+    /// family used by `destinationWeatherChip` so it fits naturally inside
+    /// the commute tile's visual language.
+    private func pinnedDestinationCard(destination: PinnedDestination, estimate: CommuteEstimate) -> some View {
+        let arrival = Self.etaFormatter.string(from: Date().addingTimeInterval(estimate.expectedTravelTime))
+        let kronerEstimate = Int((estimate.teslaKWh * 3.5).rounded())
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Color.white.opacity(0.85))
+                Text(destination.name)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 6) {
+                Text(estimate.prettyTravelTime)
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                Text("·")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.5))
+                Text(estimate.prettyDistance)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Color.white.opacity(0.75))
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.7))
+                Text("Ankomst \(arrival)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(Color.white.opacity(0.85))
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "bolt.car.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.85))
+                Text(String(format: "~%.1f kWh · ~%d kr", estimate.teslaKWh, kronerEstimate))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(Color.white.opacity(0.75))
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                )
+        )
+        .help("\(destination.name): \(destination.address)")
     }
 
     private func trafficEventRow(_ event: TrafficEvent) -> some View {
@@ -571,6 +692,52 @@ struct InfoModeView: View {
         }
         .buttonStyle(.plain)
         .help(event.plainDescription.isEmpty ? event.header : event.plainDescription)
+    }
+
+    /// Small legend under the map so "red pin = Tesla, blue pin = Clever"
+    /// reads without a hover. Counts make it obvious if a network is empty
+    /// (e.g. Clever needs an OCM API key in Settings).
+    private var chargerLegend: some View {
+        let tesla = service.chargers.filter { $0.network == .teslaSupercharger }.count
+        let clever = service.chargers.filter { $0.network == .clever }.count
+        return HStack(spacing: 10) {
+            chargerLegendDot(color: Color(red: 0.910, green: 0.129, blue: 0.153),
+                             label: "Tesla Supercharger",
+                             count: tesla)
+            if clever > 0 {
+                chargerLegendDot(color: Color(red: 0.059, green: 0.435, blue: 1.0),
+                                 label: "Clever",
+                                 count: clever)
+            } else {
+                chargerLegendCleverPlaceholder
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 4)
+    }
+
+    private func chargerLegendDot(color: Color, label: String, count: Int) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text("\(label) · \(count)")
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.7))
+        }
+    }
+
+    /// When Clever has no entries (no OCM key configured yet) we show a
+    /// muted placeholder pointing at the Settings toggle rather than silently
+    /// omitting the network — otherwise a Tesla driver wonders why their
+    /// Clever chargers aren't showing up.
+    private var chargerLegendCleverPlaceholder: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                .frame(width: 8, height: 8)
+            Text("Clever · tilføj OCM-nøgle i Settings")
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.5))
+        }
     }
 
     private func trafficEventColor(_ category: TrafficEvent.Category) -> Color {
