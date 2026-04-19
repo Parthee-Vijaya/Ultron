@@ -21,24 +21,37 @@ actor WhisperKitTranscriber: LocalTranscriber {
 
     /// Preload the model. Safe to call repeatedly — second and later calls
     /// return instantly once the WhisperKit instance is cached.
+    ///
+    /// First call on a fresh install downloads the model (`openai_whisper-tiny`
+    /// is ~39 MB; upgrades to small/medium are a config flip). Subsequent
+    /// launches load from cache in < 1 s.
     func preload() async throws {
         if whisper != nil { return }
-        // `distil-whisper_distil-small.en-coreml` is English-only; for a
-        // Danish-capable build we use `openai_whisper-small` which includes
-        // Danish. This takes a one-time ~250 MB download + ANE compile on
-        // first launch; subsequent launches load in < 1s.
+        LoggingService.shared.log("WhisperKit preload starting (model=openai_whisper-tiny)…")
+        let start = ContinuousClock.now
+        // Using `tiny` for the V2 rollout: fastest init + smallest download,
+        // covers dansk well enough for dictation. Swap to `openai_whisper-small`
+        // in Settings once the plumbing is proven.
         let config = WhisperKitConfig(
-            model: "openai_whisper-small",
+            model: "openai_whisper-tiny",
             verbose: false,
-            logLevel: .error,
+            logLevel: .info,
             prewarm: true,
             load: true,
             download: true
         )
-        let instance = try await WhisperKit(config)
-        whisper = instance
-        isReadyState = true
-        LoggingService.shared.log("WhisperKit ready (model=openai_whisper-small)")
+        do {
+            let instance = try await WhisperKit(config)
+            whisper = instance
+            isReadyState = true
+            let elapsed = ContinuousClock.now - start
+            let seconds = Double(elapsed.components.seconds)
+                + Double(elapsed.components.attoseconds) / 1e18
+            LoggingService.shared.log(String(format: "WhisperKit ready in %.2fs (model=openai_whisper-tiny)", seconds))
+        } catch {
+            LoggingService.shared.log("WhisperKit preload failed: \(error)", level: .error)
+            throw error
+        }
     }
 
     func transcribe(audioData: Data, language: String?) async throws -> String {

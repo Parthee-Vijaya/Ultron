@@ -50,9 +50,15 @@ class RecordingPipeline {
 
         // Kick off model preload in the background so the first real
         // transcription doesn't wait for ANE compilation. If WhisperKit isn't
-        // wired up, `preload()` is a no-op on the NoOp transcriber.
+        // wired up, `preload()` is a no-op on the NoOp transcriber. Errors
+        // are logged, not swallowed — we'd rather see a failed preload in
+        // jarvis.log than silently fall back to the Gemini audio path forever.
         Task { [transcriber = self.localTranscriber] in
-            try? await transcriber.preload()
+            do {
+                try await transcriber.preload()
+            } catch {
+                LoggingService.shared.log("LocalTranscriber preload failed, falling back to Gemini audio: \(error)", level: .error)
+            }
         }
     }
 
