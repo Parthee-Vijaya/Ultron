@@ -16,7 +16,7 @@ struct HotkeyCheatSheet: View {
                     .font(.system(size: 14))
                     .foregroundStyle(JarvisTheme.accent)
                 Text("Hotkeys & kommandoer")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
                 Button(action: onClose) {
@@ -60,13 +60,14 @@ struct HotkeyCheatSheet: View {
         }
         .frame(width: 420, height: 520)
         .background(JarvisTheme.surfaceBase)
+        .dynamicTypeSize(.xSmall ... .xxxLarge)
     }
 
     @ViewBuilder
     private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(JarvisTheme.textMuted)
             VStack(alignment: .leading, spacing: 4) { content() }
         }
@@ -75,11 +76,11 @@ struct HotkeyCheatSheet: View {
     private func row(label: String, shortcut: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(JarvisTheme.textPrimary)
             Spacer()
             Text(shortcut)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.caption2.monospaced())
                 .foregroundStyle(JarvisTheme.textSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)

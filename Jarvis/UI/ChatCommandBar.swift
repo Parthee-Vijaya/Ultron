@@ -50,7 +50,7 @@ struct ChatCommandBar: View {
 
                 TextField(placeholder, text: $commandText, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 14))
+                    .font(.subheadline)
                     .foregroundStyle(JarvisTheme.textPrimary)
                     .focused($inputFocused)
                     .lineLimit(1...4)
@@ -74,6 +74,7 @@ struct ChatCommandBar: View {
             .padding(.horizontal, 14)
         }
         .padding(.vertical, 10)
+        .dynamicTypeSize(.xSmall ... .xxxLarge)
         .onAppear {
             DispatchQueue.main.async { inputFocused = true }
         }
@@ -109,7 +110,7 @@ struct ChatCommandBar: View {
                         if let shortcut = shortcutLookup(mode) {
                             Spacer()
                             Text(shortcut)
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.caption2.monospaced())
                                 .foregroundStyle(JarvisTheme.textMuted)
                         }
                     }
@@ -117,7 +118,7 @@ struct ChatCommandBar: View {
             }
         } label: {
             Text(modeShortLabel)
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(JarvisTheme.textSecondary)
         }
         .menuStyle(.borderlessButton)
@@ -210,7 +211,7 @@ struct ChatCommandBar: View {
                             if let shortcut = shortcutLookup(mode) {
                                 Spacer()
                                 Text(shortcut)
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.caption2.monospaced())
                                     .foregroundStyle(JarvisTheme.textMuted)
                             }
                         }
@@ -313,7 +314,7 @@ struct ChatCommandBar: View {
                         )
                 }
                 Text("Billede vedhæftet")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(JarvisTheme.textSecondary)
                 Spacer(minLength: 0)
                 Button(action: onRemove) {
@@ -433,7 +434,7 @@ struct ChatCommandBar: View {
                         if let shortcut = shortcutLookup(mode) {
                             Spacer()
                             Text(shortcut)
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.caption2.monospaced())
                                 .foregroundStyle(JarvisTheme.textMuted)
                         }
                     }
@@ -444,7 +445,7 @@ struct ChatCommandBar: View {
                 Image(systemName: selectedMode.icon)
                     .font(.system(size: 11))
                 Text(selectedMode.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.medium))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
             }

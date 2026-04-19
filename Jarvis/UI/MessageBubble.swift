@@ -28,6 +28,7 @@ struct MessageBubble: View {
                 Spacer(minLength: 0)
             }
         }
+        .dynamicTypeSize(.xSmall ... .accessibility2)
     }
 
     private var userBubble: some View {
@@ -56,7 +57,7 @@ struct MessageBubble: View {
     private var assistantBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(Constants.displayName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(JarvisTheme.textSecondary)
             MarkdownTextView(message.text, foregroundColor: JarvisTheme.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,7 +76,7 @@ struct MessageBubble: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10, weight: .semibold))
                 Text("Prøv igen")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption2.weight(.medium))
             }
             .foregroundStyle(JarvisTheme.accent)
             .padding(.horizontal, 10)
@@ -103,7 +104,7 @@ private struct StreamingCursor: View {
 
     var body: some View {
         Text("▌")
-            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .font(.footnote.monospaced())
             .foregroundStyle(JarvisTheme.accent)
             .opacity(dim ? 0.25 : 1.0)
             .onAppear {

@@ -50,6 +50,7 @@ struct ConversationSidebar: View {
         }
         .frame(width: 248)
         .background(JarvisTheme.surfaceBase.opacity(0.92))
+        .dynamicTypeSize(.xSmall ... .xxxLarge)
         // v1.4 Fase 3 semantic fallback: when typing, we defer to a 300ms
         // debounce, then run the actor-isolated embedding search off the
         // main thread. The `.task(id:)` modifier cancels in-flight work when
@@ -95,7 +96,7 @@ struct ConversationSidebar: View {
                 .foregroundStyle(JarvisTheme.textMuted)
             TextField("Søg", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(JarvisTheme.textPrimary)
         }
         .padding(.horizontal, 10)
@@ -131,10 +132,10 @@ struct ConversationSidebar: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
                 Text("Ny chat")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text("⌘N")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.caption2.weight(.medium).monospaced())
                     .foregroundStyle(JarvisTheme.textPrimary.opacity(0.6))
             }
             .foregroundStyle(JarvisTheme.textPrimary)
@@ -166,7 +167,7 @@ struct ConversationSidebar: View {
                     .foregroundStyle(JarvisTheme.textMuted)
                     .frame(width: 18)
                 Text("Mine ting")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(JarvisTheme.textMuted)
                 Spacer()
             }
@@ -183,7 +184,7 @@ struct ConversationSidebar: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(JarvisTheme.textMuted)
             .padding(.horizontal, 18)
             .padding(.bottom, 6)
@@ -337,7 +338,7 @@ struct ConversationSidebar: View {
             Button { onSelect(meta.id) } label: {
                 HStack(spacing: 6) {
                     Text(meta.title)
-                        .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
+                        .font(.footnote.weight(isCurrent ? .semibold : .regular))
                         .foregroundStyle(isCurrent ? JarvisTheme.textPrimary : JarvisTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -387,7 +388,7 @@ struct ConversationSidebar: View {
                 .font(.system(size: 16))
                 .foregroundStyle(JarvisTheme.textMuted)
             Text(searchText.isEmpty ? "Ingen tidligere samtaler" : "Ingen match")
-                .font(.system(size: 11))
+                .font(.caption2)
                 .foregroundStyle(JarvisTheme.textMuted)
         }
         .padding(.top, 30)
@@ -404,7 +405,7 @@ struct ConversationSidebar: View {
         HStack(spacing: 10) {
             avatar
             Text(Self.displayNickname)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(Font.system(.footnote, design: .rounded).weight(.semibold))
                 .foregroundStyle(JarvisTheme.textPrimary)
                 .lineLimit(1)
             Spacer()
