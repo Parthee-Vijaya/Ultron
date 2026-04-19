@@ -458,16 +458,14 @@ struct InfoModeView: View {
 
     private var commuteTile: some View {
         tile(title: commuteTitle, icon: "house.fill", fullWidth: true) {
-            // Horizontal split:
-            //   Left  — stats / chips / traffic events / input. Flexible
-            //           width, uses the long axis for the traffic list so
-            //           the map doesn't have to grow vertically to match.
-            //   Right — pinned destinations stacked on TOP, then the map
-            //           below (25% shorter than before). Fixed 340pt wide.
+            // Horizontal split, laid out per the user's sketch:
+            //   Left  — Pinnede destinationer (stacked) + Live-trafik chip
+            //           + Trafikinfo section + input row. Flexible width.
+            //   Right — "0 min til X" stats on TOP, then the map below.
+            //           Fixed 340pt wide so stats + map stay prominent.
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    commuteStatsColumn
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    pinnedDestinationsRow
                     commuteChipsRow
                     trafficEventsSection
                     destinationInputRow
@@ -475,7 +473,8 @@ struct InfoModeView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    pinnedDestinationsRow
+                    commuteStatsColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     commuteMapColumn
                 }
                 .frame(width: 340)
