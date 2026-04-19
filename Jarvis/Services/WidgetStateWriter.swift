@@ -49,11 +49,11 @@ final class WidgetStateWriter {
 
         #if canImport(WidgetKit)
         // Each widget kind reloads separately so a weather-only update doesn't
-        // force the briefing widget to re-render. Kinds here must match the
-        // `kind:` string each Widget struct declares once the extension exists.
-        WidgetCenter.shared.reloadTimelines(ofKind: "CockpitWidget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "CommuteWidget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "BriefingWidget")
+        // force the whole bundle to re-render. Kinds here MUST match the
+        // `kind:` string each Widget struct declares in the extension target.
+        WidgetCenter.shared.reloadTimelines(ofKind: "dk.pavi.jarvis.cockpit-mini")
+        WidgetCenter.shared.reloadTimelines(ofKind: "dk.pavi.jarvis.commute")
+        WidgetCenter.shared.reloadTimelines(ofKind: "dk.pavi.jarvis.claude-usage")
         #endif
     }
 

@@ -196,10 +196,68 @@ final class InfoModeService {
             await MainActor.run {
                 self.lastRefresh = Date()
                 self.state = .loaded
+                // v1.4 Fase 4: push a flattened snapshot to the shared
+                // App Group container so the widget extension can read
+                // it. No-ops silently until both targets share the app
+                // group (entitlement lands when the Widget Extension
+                // target is added via Xcode — see docs/widgets-setup.md).
+                WidgetStateWriter.shared.write(self.makeWidgetSnapshot())
             }
         }
         refreshTask = task
         await task.value
+    }
+
+    /// Collapses the observable tile state into the flat `WidgetSnapshot`
+    /// schema the widget extension consumes. Fields that aren't loaded
+    /// yet become nil — widgets render their `.placeholder` cell in that
+    /// case, never a crash.
+    private func makeWidgetSnapshot() -> WidgetSnapshot {
+        let weatherCell: WidgetSnapshot.Weather? = weather.map { w in
+            WidgetSnapshot.Weather(
+                locationLabel: w.locationLabel,
+                tempC: w.current.temperature,
+                conditionSymbol: WeatherCode.symbol(for: w.current.weatherCode),
+                highC: w.daily.first?.tempMax,
+                lowC: w.daily.first?.tempMin
+            )
+        }
+        let eventCell: WidgetSnapshot.Event? = nextEvent.map { e in
+            WidgetSnapshot.Event(title: e.title, startAt: e.start, location: e.location)
+        }
+        let claudeCell = WidgetSnapshot.Claude(
+            todayTokens: claudeStats.todayTokens,
+            weeklyTrendPct: Self.weeklyTrend(today: claudeStats.todayTokens, week: claudeStats.weekTokens),
+            topProject: claudeStats.recentProjects.first?.label
+        )
+        let commuteCell: WidgetSnapshot.Commute? = commute.map { c in
+            let delay = c.baselineTravelTime.map { Int((c.expectedTravelTime - $0) / 60) } ?? 0
+            return WidgetSnapshot.Commute(
+                destinationLabel: c.toLabel,
+                durationMinutes: Int(c.expectedTravelTime / 60),
+                trafficDelta: delay,
+                arrivalAt: Date().addingTimeInterval(c.expectedTravelTime)
+            )
+        }
+        return WidgetSnapshot(
+            version: WidgetSnapshot.currentVersion,
+            generatedAt: Date(),
+            weather: weatherCell,
+            nextEvent: eventCell,
+            claude: claudeCell,
+            commute: commuteCell,
+            briefing: nil
+        )
+    }
+
+    /// Crude day-vs-week-average ratio for the Claude widget's trend chip.
+    /// Returns 0 when the week is empty (avoid div/0). 50 means "today is
+    /// 50% above the 7-day average".
+    private static func weeklyTrend(today: Int, week: Int) -> Double {
+        guard week > 0 else { return 0 }
+        let avg = Double(week) / 7.0
+        guard avg > 0 else { return 0 }
+        return ((Double(today) / avg) - 1.0) * 100
     }
 
     // Per-tile loaders. Each mutates exactly one published property, off the
