@@ -43,7 +43,7 @@ struct InfoModeView: View {
                 // results) so the two network sub-tiles collapse into one.
                 HStack(alignment: .top, spacing: 12) {
                     commuteTile
-                    systemTile
+                    systemQuadrant
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -538,7 +538,7 @@ struct InfoModeView: View {
                     chargers: service.chargers
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 200)
+                .frame(height: 160)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -563,7 +563,7 @@ struct InfoModeView: View {
                             .foregroundStyle(Color.white.opacity(0.55))
                     }
                 )
-                .frame(height: 200)
+                .frame(height: 160)
         }
     }
 
@@ -1355,86 +1355,166 @@ struct InfoModeView: View {
 
     // MARK: - System tile
 
-    private var systemTile: some View {
-        tile(title: "System & Netværk", icon: "cpu.fill", fullWidth: true) {
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    infoRow("Batteri", value: batteryLine)
-                    infoRow("macOS", value: service.systemInfo.osVersion)
-                    infoRow("Host", value: service.systemInfo.hostname)
-                    infoRow("IP", value: service.systemInfo.localIP)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    infoRow("RAM", value: ramLine)
-                    infoRow("WiFi", value: wifiLine)
-                    infoRow("DNS", value: service.systemInfo.dnsServers.first)
-                    infoRow("Hardware", value: hardwareLine)
-                }
+    /// 2×2 grid of four equal-sized system/network sub-tiles, sitting
+    /// inside the same half-row slot the old monolithic System tile used.
+    /// Each sub-tile is a focused domain (System / Netværk / Ydelse /
+    /// Handlinger) which makes the info scannable without scrolling.
+    private var systemQuadrant: some View {
+        VStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                systemBasicsSubTile
+                networkSubTile
             }
+            .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 8) {
+                performanceSubTile
+                actionsSubTile
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
 
-            // Netværk-handlinger folded in so System is the one tile you
-            // go to for "hvad sker der med min maskine + netværk".
-            HStack(spacing: 8) {
+    private var systemBasicsSubTile: some View {
+        subTile(title: "System", icon: "cpu.fill") {
+            infoRow("Batteri", value: batteryLine)
+            infoRow("macOS", value: service.systemInfo.osVersion)
+            infoRow("Host", value: service.systemInfo.hostname)
+            infoRow("Uptime", value: uptimeLine)
+            infoRow("Hardware", value: hardwareLine)
+        }
+    }
+
+    private var networkSubTile: some View {
+        subTile(title: "Netværk", icon: "network") {
+            infoRow("Lokal IP", value: service.systemInfo.localIP)
+            infoRow("DNS", value: service.systemInfo.dnsServers.first)
+            infoRow("WiFi", value: wifiSSIDLine)
+            infoRow("Signal", value: wifiSignalLine)
+            infoRow("Rate", value: wifiRateLine)
+        }
+    }
+
+    private var performanceSubTile: some View {
+        subTile(title: "Ydelse", icon: "speedometer") {
+            infoRow("RAM", value: ramLine)
+            if let ramPct = ramUsedPercent {
+                miniUsageBar(label: "RAM", percent: ramPct)
+            }
+            infoRow("Disk", value: diskLine)
+            if let diskPct = diskUsedPercent {
+                miniUsageBar(label: "Disk", percent: diskPct)
+            }
+        }
+    }
+
+    private var actionsSubTile: some View {
+        subTile(title: "Handlinger", icon: "bolt.fill") {
+            HStack(spacing: 6) {
                 Button {
                     Task { await service.runSpeedtest() }
                 } label: {
                     Label(service.isRunningSpeedtest ? "Kører…" : "Speedtest",
                           systemImage: "speedometer")
-                        .font(.caption)
+                        .font(.caption2)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.white)
-                .controlSize(.small)
+                .controlSize(.mini)
                 .disabled(service.isRunningSpeedtest)
 
                 Button {
                     Task { await service.runNetworkScan() }
                 } label: {
-                    Label(service.isRunningNetworkScan ? "Scanner…" : "Scan LAN",
+                    Label(service.isRunningNetworkScan ? "Scan…" : "Scan LAN",
                           systemImage: "dot.radiowaves.up.forward")
-                        .font(.caption)
+                        .font(.caption2)
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.mini)
                 .disabled(service.isRunningNetworkScan)
             }
-            .padding(.top, 8)
 
             if let speedtest = service.systemInfo.speedtestSummary {
                 Text(speedtest)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(6)
-                    .background(JarvisTheme.surfaceBase.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .padding(.top, 2)
             }
 
             if !service.systemInfo.networkScan.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(service.systemInfo.networkScan.count) enheder på LAN")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.white.opacity(0.7))
-                    ForEach(service.systemInfo.networkScan.prefix(5)) { device in
-                        HStack {
-                            Text(device.ip)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.white.opacity(0.85))
-                            Spacer()
-                            Text(device.mac)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(Color.white.opacity(0.55))
-                        }
-                    }
-                    if service.systemInfo.networkScan.count > 5 {
-                        Text("+ \(service.systemInfo.networkScan.count - 5) yderligere")
-                            .font(.caption2)
-                            .foregroundStyle(Color.white.opacity(0.5))
-                    }
+                Text("\(service.systemInfo.networkScan.count) enheder på LAN")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.75))
+                    .padding(.top, 2)
+                ForEach(service.systemInfo.networkScan.prefix(3)) { device in
+                    Text(device.ip)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.white.opacity(0.7))
                 }
-                .padding(.top, 2)
+                if service.systemInfo.networkScan.count > 3 {
+                    Text("+ \(service.systemInfo.networkScan.count - 3)")
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
             }
         }
+    }
+
+    /// Smaller-than-`tile()` glass surface used by the 4-up quadrant. The
+    /// main difference: tighter padding + slightly muted title so the 4
+    /// sub-tiles don't shout over the big Rute map next door.
+    @ViewBuilder
+    private func subTile<Content: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(Color.white)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white)
+                Spacer(minLength: 0)
+            }
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                )
+        }
+    }
+
+    private func miniUsageBar(label: String, percent: Double) -> some View {
+        GeometryReader { geo in
+            let clamped = max(0, min(1, percent))
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.white.opacity(0.12))
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(barColor(for: clamped))
+                    .frame(width: geo.size.width * CGFloat(clamped))
+            }
+        }
+        .frame(height: 4)
+        .padding(.vertical, 2)
+    }
+
+    private func barColor(for percent: Double) -> Color {
+        if percent >= 0.9 { return JarvisTheme.criticalGlow }
+        if percent >= 0.75 { return JarvisTheme.warningGlow }
+        return Color.white.opacity(0.7)
     }
 
     // MARK: - Shared tile shell
@@ -1536,6 +1616,65 @@ struct InfoModeView: View {
             parts.append(String(format: "%.0f Mbps", rate))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Split the WiFi info into SSID / signal / rate sub-lines so each
+    /// infoRow in the Netværk sub-tile shows one focused fact instead of
+    /// a long "SSID · RSSI · Mbps" blob.
+    private var wifiSSIDLine: String? {
+        guard let ssid = service.systemInfo.wifi?.ssid, !ssid.isEmpty else { return nil }
+        return ssid
+    }
+
+    private var wifiSignalLine: String? {
+        guard let wifi = service.systemInfo.wifi, let rssi = wifi.rssi else { return nil }
+        return "\(rssi) dBm · \(wifi.qualityLabel)"
+    }
+
+    private var wifiRateLine: String? {
+        guard let rate = service.systemInfo.wifi?.transmitRate else { return nil }
+        return String(format: "%.0f Mbps", rate)
+    }
+
+    /// System uptime as "Xd Yt" / "Xt Ym" / "N min". Derived from the
+    /// kernel — no service round-trip needed, so it updates every time
+    /// the view re-renders (and the Cockpit re-renders on every tile
+    /// refresh + the 15-second Claude poll).
+    private var uptimeLine: String? {
+        let uptime = Int(ProcessInfo.processInfo.systemUptime)
+        let days = uptime / 86_400
+        let hours = (uptime % 86_400) / 3600
+        let minutes = (uptime % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)t" }
+        if hours > 0 { return "\(hours)t \(minutes)m" }
+        return "\(minutes) min"
+    }
+
+    /// Used/total for the boot volume, formatted as "X / Y GB".
+    private var diskLine: String? {
+        guard let (used, total) = diskUsageGB() else { return nil }
+        return String(format: "%.0f / %.0f GB", used, total)
+    }
+
+    private var ramUsedPercent: Double? {
+        let s = service.systemInfo
+        guard let total = s.ramTotalGB, total > 0, let used = s.ramUsedGB else { return nil }
+        return used / total
+    }
+
+    private var diskUsedPercent: Double? {
+        guard let (used, total) = diskUsageGB(), total > 0 else { return nil }
+        return used / total
+    }
+
+    private func diskUsageGB() -> (used: Double, total: Double)? {
+        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/")
+        guard let attrs,
+              let total = (attrs[.systemSize] as? NSNumber)?.doubleValue,
+              let free = (attrs[.systemFreeSize] as? NSNumber)?.doubleValue
+        else { return nil }
+        let gb = 1_000_000_000.0
+        return ((total - free) / gb, total / gb)
     }
 
     private var hardwareLine: String? {
