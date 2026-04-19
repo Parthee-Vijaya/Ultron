@@ -76,6 +76,11 @@ struct HUDContentView: View {
         .scaleEffect(appeared ? 1 : Constants.Animation.appearScaleFrom)
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : Constants.Animation.appearOffsetFrom)
+        // v1.4 Fase 2a: bound Dynamic Type at the HUD root so Accessibility
+        // → Larger Text stays readable without overflowing the 380pt-wide
+        // corner panel. The cap at .xLarge (≈130%) is a tested safe zone;
+        // past that the waveform strip + transcript start colliding.
+        .dynamicTypeSize(.xSmall ... .xLarge)
         // NB: intentionally NO implicit animation on state.currentPhase here.
         // An implicit animation there caused SwiftUI to fade the old subview out
         // and the new one in, leaving a zero-opacity gap so users sometimes
@@ -147,7 +152,7 @@ struct HUDContentView: View {
                     levelMonitor: audioLevel
                 )
                 Text(activeModeName.isEmpty ? Constants.displayName : activeModeName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 if state.localSTTReady {
                     whisperBadge
@@ -169,7 +174,7 @@ struct HUDContentView: View {
                         .transition(.opacity)
                 } else {
                     Text(speechService.transcript)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .foregroundStyle(JarvisTheme.textPrimary)
                         .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
@@ -216,7 +221,7 @@ struct HUDContentView: View {
                     .controlSize(.small)
                     .tint(JarvisTheme.accent)
                 Text(state.currentStep?.displayText ?? "Behandler…")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                     .animation(JarvisTheme.springSnappy, value: state.currentStep)
                 Spacer()
@@ -246,7 +251,7 @@ struct HUDContentView: View {
                     .fill(JarvisTheme.accent)
                     .frame(width: 8, height: 8)
                 Text(Constants.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
                 iconButton(system: state.isPinned ? "pin.fill" : "pin",
@@ -305,7 +310,7 @@ struct HUDContentView: View {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(JarvisTheme.criticalGlow)
                 Text("Fejl")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
                 iconButton(system: "xmark", help: "Luk", action: onClose)
@@ -342,7 +347,7 @@ struct HUDContentView: View {
                 Image(systemName: "lock.fill")
                     .foregroundStyle(JarvisTheme.warningGlow)
                 Text("\(permission) kræves")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
                 Spacer()
                 iconButton(system: "xmark", help: "Luk", action: onClose)
