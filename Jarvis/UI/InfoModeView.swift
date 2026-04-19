@@ -66,7 +66,9 @@ struct InfoModeView: View {
                 //           tools from the latest session, per-model split)
                 HStack(alignment: .top, spacing: 12) {
                     claudeSessionsTile
+                        .frame(maxWidth: .infinity)
                     claudeProjectsTile
+                        .frame(maxWidth: .infinity)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -1167,44 +1169,41 @@ struct InfoModeView: View {
     private var claudeSessionsTile: some View {
         let s = service.claudeStats
         return tile(title: "Claude · Sessioner & Tokens", icon: "sparkles", fullWidth: true) {
-            HStack(alignment: .top, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    infoRow("I dag", value: todayLine)
-                    infoRow("I alt", value: "\(formatTokens(s.totalTokens)) · \(s.totalSessions) sessioner")
-                    infoRow("Kørt", value: formatHours(s.totalActiveHours))
-                    if let first = s.firstSessionDate {
-                        infoRow("Siden", value: firstSessionFormatter.string(from: first))
-                    }
+            // Single compact column — the budget bars below already carry
+            // the Daily/Weekly percentage signal, so the old duplicate
+            // infoRow pair was removed to bring tile height in line with
+            // Projekter & Modeller on the right.
+            VStack(alignment: .leading, spacing: 4) {
+                infoRow("I dag", value: todayLine)
+                infoRow("I alt", value: "\(formatTokens(s.totalTokens)) · \(s.totalSessions) sessioner")
+                infoRow("Kørt", value: formatHours(s.totalActiveHours))
+                infoRow("Seneste", value: latestSessionLine)
+                if let first = s.firstSessionDate {
+                    infoRow("Siden", value: firstSessionFormatter.string(from: first))
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    infoRow("Seneste", value: latestSessionLine)
-                    infoRow("Daily", value: budgetRow(used: s.todayTokens, limit: claudeDailyLimit))
-                    infoRow("Weekly", value: budgetRow(used: s.weekTokens, limit: claudeWeeklyLimit))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 budgetBar(label: "I dag", used: s.todayTokens, limit: claudeDailyLimit)
                 budgetBar(label: "Denne uge", used: s.weekTokens, limit: claudeWeeklyLimit)
             }
-            .padding(.top, 8)
+            .padding(.top, 6)
 
             if s.longestSessionMessages > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "stopwatch")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.7))
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.65))
                     Text("Længste: \(s.longestSessionMessages) beskeder")
-                        .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.7))
+                        .font(.caption2)
+                        .foregroundStyle(Color.white.opacity(0.65))
                     if let date = s.longestSessionDate {
                         Text("· \(firstSessionFormatter.string(from: date))")
-                            .font(.caption)
-                            .foregroundStyle(Color.white.opacity(0.5))
+                            .font(.caption2)
+                            .foregroundStyle(Color.white.opacity(0.45))
                     }
                 }
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
         }
     }
