@@ -1,78 +1,170 @@
+import AppKit
 import SwiftUI
 
-/// Left-edge drawer showing past conversations (v1.1.5+). Groups by relative
-/// time (I dag / I går / Denne uge / Ældre). Picking a row loads that
-/// conversation into the active chat session; hover reveals a trash icon.
+/// Left-edge drawer showing past conversations. v1.4 Fase 2c redesign mirrors
+/// the Gemini macOS layout: search field at top, highlighted "Ny chat"
+/// + "Mine ting" quick rows, "Chatsamtaler" section with the live list,
+/// user avatar + full name anchored to the bottom. Hover a conversation to
+/// reveal a trash icon (unchanged from v1.1.5).
 struct ConversationSidebar: View {
     let conversations: [ConversationStore.Metadata]
     let currentID: UUID?
     let onSelect: (UUID) -> Void
     let onDelete: (UUID) -> Void
     let onClose: () -> Void
+    /// v1.4: optional "Ny chat" handler — when present, the top quick row is
+    /// wired to this. When nil (legacy callers) the row still renders but is
+    /// disabled.
+    var onNewChat: (() -> Void)? = nil
 
     @State private var hoveringID: UUID?
+    @State private var searchText: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
+            headerControls
+            searchField
+            quickRows
+            sectionLabel("CHATSAMTALER")
+            conversationList
+            Spacer(minLength: 0)
             Divider().background(JarvisTheme.hairline)
-
-            if conversations.isEmpty {
-                emptyState
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4, pinnedViews: [.sectionHeaders]) {
-                        ForEach(Self.grouped(conversations), id: \.label) { group in
-                            Section {
-                                ForEach(group.items) { meta in
-                                    row(meta)
-                                }
-                            } header: {
-                                Text(group.label)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(JarvisTheme.textMuted)
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 10)
-                                    .padding(.bottom, 4)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(JarvisTheme.surfaceBase)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 12)
-                }
-            }
+            avatarFooter
         }
-        .frame(width: 240)
-        .background(JarvisTheme.surfaceBase)
+        .frame(width: 248)
+        .background(JarvisTheme.surfaceBase.opacity(0.92))
     }
 
-    // MARK: - Header
+    // MARK: - Top controls (sidebar toggle)
 
-    private var header: some View {
+    private var headerControls: some View {
         HStack(spacing: 8) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 12))
-                .foregroundStyle(JarvisTheme.accent)
-            Text("Historik")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(JarvisTheme.textPrimary)
+            // Left side reserved for the system traffic lights on a window
+            // that hosts its own titlebar; the chat panel is borderless so
+            // we just pad.
+            Spacer().frame(width: 70)
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "sidebar.leading")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(JarvisTheme.textSecondary)
-                    .frame(width: 22, height: 22)
+                    .frame(width: 26, height: 22)
                     .background(
                         RoundedRectangle(cornerRadius: 5)
-                            .fill(JarvisTheme.surfaceElevated)
+                            .fill(JarvisTheme.surfaceElevated.opacity(0.8))
                     )
             }
             .buttonStyle(.plain)
-            .help("Skjul historik")
+            .help("Skjul sidebjælke")
+            .accessibilityLabel("Skjul sidebjælke")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Search field
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(JarvisTheme.textMuted)
+            TextField("Søg", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(JarvisTheme.textPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(JarvisTheme.surfaceElevated.opacity(0.65))
+        )
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: - Quick rows (Ny chat, Mine ting)
+
+    private var quickRows: some View {
+        VStack(spacing: 2) {
+            quickRow(
+                title: "Ny chat",
+                icon: "square.and.pencil",
+                highlighted: true,
+                action: { onNewChat?() }
+            )
+            .disabled(onNewChat == nil)
+            quickRow(
+                title: "Mine ting",
+                icon: "star",
+                highlighted: false,
+                action: {}  // Placeholder: starred conversations feature lands in a follow-up.
+            )
+            .disabled(true)
+            .opacity(0.6)
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 14)
+    }
+
+    private func quickRow(title: String, icon: String, highlighted: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(highlighted ? JarvisTheme.textPrimary : JarvisTheme.textSecondary)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.system(size: 13, weight: highlighted ? .semibold : .regular))
+                    .foregroundStyle(highlighted ? JarvisTheme.textPrimary : JarvisTheme.textSecondary)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(highlighted ? JarvisTheme.surfaceElevated.opacity(0.9) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Section label
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(JarvisTheme.textMuted)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Conversation list
+
+    @ViewBuilder
+    private var conversationList: some View {
+        if filteredConversations.isEmpty {
+            emptyState
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(filteredConversations) { meta in
+                        row(meta)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+            }
+        }
+    }
+
+    private var filteredConversations: [ConversationStore.Metadata] {
+        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return conversations }
+        return conversations.filter { $0.title.lowercased().contains(query) }
     }
 
     // MARK: - Row
@@ -83,27 +175,19 @@ struct ConversationSidebar: View {
 
         return HStack(spacing: 6) {
             Button { onSelect(meta.id) } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meta.title)
-                        .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
-                        .foregroundStyle(isCurrent ? JarvisTheme.textPrimary : JarvisTheme.textSecondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    HStack(spacing: 4) {
-                        Text(relativeDate(meta.updatedAt))
-                        Text("·")
-                        Text("\(meta.messageCount) beskeder")
-                    }
-                    .font(.system(size: 10))
-                    .foregroundStyle(JarvisTheme.textMuted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isCurrent ? JarvisTheme.accent.opacity(0.15) : (isHovering ? JarvisTheme.surfaceElevated : Color.clear))
-                )
+                Text(meta.title)
+                    .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
+                    .foregroundStyle(isCurrent ? JarvisTheme.textPrimary : JarvisTheme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isCurrent ? JarvisTheme.surfaceElevated.opacity(0.9) :
+                                  (isHovering ? JarvisTheme.surfaceElevated.opacity(0.4) : Color.clear))
+                    )
             }
             .buttonStyle(.plain)
 
@@ -112,17 +196,17 @@ struct ConversationSidebar: View {
                     Image(systemName: "trash")
                         .font(.system(size: 10))
                         .foregroundStyle(JarvisTheme.textMuted)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: 5)
                                 .fill(JarvisTheme.surfaceElevated)
                         )
                 }
                 .buttonStyle(.plain)
                 .help("Slet samtale")
+                .accessibilityLabel("Slet samtale")
             }
         }
-        .padding(.horizontal, 6)
         .onHover { hovering in
             hoveringID = hovering ? meta.id : (hoveringID == meta.id ? nil : hoveringID)
         }
@@ -131,58 +215,62 @@ struct ConversationSidebar: View {
     private var emptyState: some View {
         VStack(spacing: 6) {
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 18))
+                .font(.system(size: 16))
                 .foregroundStyle(JarvisTheme.textMuted)
-            Text("Ingen tidligere samtaler")
+            Text(searchText.isEmpty ? "Ingen tidligere samtaler" : "Ingen match")
                 .font(.system(size: 11))
                 .foregroundStyle(JarvisTheme.textMuted)
         }
-        .padding(.top, 40)
+        .padding(.top, 30)
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Grouping
+    // MARK: - Avatar footer
 
-    private struct Group { let label: String; let items: [ConversationStore.Metadata] }
-
-    private static func grouped(_ list: [ConversationStore.Metadata]) -> [Group] {
-        let calendar = Calendar(identifier: .gregorian)
-        let now = Date()
-        var today: [ConversationStore.Metadata] = []
-        var yesterday: [ConversationStore.Metadata] = []
-        var thisWeek: [ConversationStore.Metadata] = []
-        var older: [ConversationStore.Metadata] = []
-
-        for item in list {
-            if calendar.isDateInToday(item.updatedAt) {
-                today.append(item)
-            } else if calendar.isDateInYesterday(item.updatedAt) {
-                yesterday.append(item)
-            } else if calendar.dateComponents([.day], from: item.updatedAt, to: now).day ?? 99 < 7 {
-                thisWeek.append(item)
-            } else {
-                older.append(item)
-            }
+    private var avatarFooter: some View {
+        HStack(spacing: 10) {
+            avatar
+            Text(Self.fullUserName)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(JarvisTheme.textPrimary)
+                .lineLimit(1)
+            Spacer()
         }
-
-        var groups: [Group] = []
-        if !today.isEmpty     { groups.append(Group(label: "I DAG", items: today)) }
-        if !yesterday.isEmpty { groups.append(Group(label: "I GÅR", items: yesterday)) }
-        if !thisWeek.isEmpty  { groups.append(Group(label: "DENNE UGE", items: thisWeek)) }
-        if !older.isEmpty     { groups.append(Group(label: "ÆLDRE", items: older)) }
-        return groups
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
-    private func relativeDate(_ date: Date) -> String {
-        let seconds = Date().timeIntervalSince(date)
-        if seconds < 60       { return "\(Int(seconds))s" }
-        if seconds < 3600     { return "\(Int(seconds / 60))m" }
-        if seconds < 86_400   { return "\(Int(seconds / 3600))t" }
-        let days = Int(seconds / 86_400)
-        if days < 30          { return "\(days)d" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d. MMM"
-        formatter.locale = Locale(identifier: "da_DK")
-        return formatter.string(from: date)
+    /// Circular avatar with the user's first initial on a dynamic tint —
+    /// avoids hitting the user's photo library / NSUser asset, keeps the
+    /// footer self-contained. Future: read `NSFullUserName`'s contacts
+    /// photo if the user opts in.
+    private var avatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [JarvisTheme.accent, JarvisTheme.accentBright],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Text(Self.firstInitial)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white)
+        }
+        .frame(width: 26, height: 26)
+    }
+
+    private static var fullUserName: String {
+        let full = NSFullUserName().trimmingCharacters(in: .whitespaces)
+        return full.isEmpty ? NSUserName() : full
+    }
+
+    private static var firstInitial: String {
+        guard let first = fullUserName.split(separator: " ").first,
+              let ch = first.first else {
+            return "?"
+        }
+        return String(ch).uppercased()
     }
 }

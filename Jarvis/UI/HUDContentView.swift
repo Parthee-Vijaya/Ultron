@@ -139,7 +139,7 @@ struct HUDContentView: View {
     private func recordingView(elapsed: TimeInterval) -> some View {
         let remaining = max(0, Constants.maxRecordingDuration - elapsed)
         return VStack(alignment: .leading, spacing: 10) {
-            // Header: indicator + mode name + countdown
+            // Header: indicator + mode name + Whisper badge + countdown
             HStack(spacing: 10) {
                 HALEyeView(
                     progress: min(elapsed / Constants.maxRecordingDuration, 1.0),
@@ -149,6 +149,9 @@ struct HUDContentView: View {
                 Text(activeModeName.isEmpty ? Constants.displayName : activeModeName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(JarvisTheme.textPrimary)
+                if state.localSTTReady {
+                    whisperBadge
+                }
                 Spacer()
                 Text(formatTime(remaining))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
@@ -180,6 +183,28 @@ struct HUDContentView: View {
         }
         .animation(JarvisTheme.springSnappy, value: audioLevel.isSilent)
         .animation(JarvisTheme.springSnappy, value: speechService.transcript.isEmpty)
+    }
+
+    /// "On-device" badge rendered next to the mode name while recording. Only
+    /// visible when the Whisper model is loaded — during the ~5s cold-start
+    /// it's hidden, making the transition from "Gemini STT" to "local STT"
+    /// visually clear.
+    private var whisperBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "waveform.path")
+                .font(.system(size: 9, weight: .semibold))
+            Text("Whisper")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+        }
+        .foregroundStyle(JarvisTheme.accent)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            Capsule(style: .continuous)
+                .fill(JarvisTheme.accent.opacity(0.15))
+                .overlay(Capsule().stroke(JarvisTheme.accent.opacity(0.4), lineWidth: 0.5))
+        )
+        .accessibilityLabel("Whisper aktiv, offline transkription")
     }
 
     // MARK: - Processing

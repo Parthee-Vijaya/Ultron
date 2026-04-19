@@ -73,7 +73,12 @@ struct ChatView: View {
                         // keep sidebar open so user can hop between chats
                     },
                     onDelete: { id in onDeleteConversation?(id) },
-                    onClose: { showHistorySidebar = false }
+                    onClose: { showHistorySidebar = false },
+                    onNewChat: {
+                        chatSession.clear()
+                        commandTextBinding.wrappedValue = ""
+                        selectedMode = BuiltInModes.chat
+                    }
                 )
                 .transition(.move(edge: .leading))
                 Divider().background(JarvisTheme.hairline)
@@ -81,6 +86,23 @@ struct ChatView: View {
             mainColumn
         }
         .animation(JarvisTheme.springSnappy, value: showHistorySidebar)
+    }
+
+    /// v1.4 Fase 2c: deep-black → navy gradient behind the chat, matching the
+    /// Gemini desktop reference. Sits on top of the HUD's `.regularMaterial`
+    /// so the chat window reads a touch more "at night" than the corner HUD,
+    /// without losing its floating-glass quality.
+    private var chatBackdropGradient: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color(red: 0.04, green: 0.04, blue: 0.07), location: 0.0),
+                .init(color: Color(red: 0.05, green: 0.07, blue: 0.14), location: 0.55),
+                .init(color: Color(red: 0.05, green: 0.10, blue: 0.22), location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .allowsHitTesting(false)
     }
 
     private var mainColumn: some View {
@@ -131,6 +153,7 @@ struct ChatView: View {
             minWidth: Constants.ChatHUD.minWidth,
             minHeight: Constants.ChatHUD.minHeight
         )
+        .background(chatBackdropGradient)
         .overlay(dropHighlight)
         .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
@@ -425,31 +448,57 @@ struct ChatView: View {
         }
     }
 
+    /// v1.4 Fase 2c: centred greeting that mirrors the Gemini macOS app
+    /// reference — top-centred multi-hue sparkle, big soft "Hej {firstName}"
+    /// + "Hvad har du på hjerte?" subline, roomy vertical whitespace. Quick
+    /// starters move to the command bar's "+" menu.
     private var emptyState: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(JarvisTheme.accent)
-                .shadow(color: JarvisTheme.accent.opacity(0.4), radius: 6)
-                .padding(.top, 30)
-            Text("Hvordan kan jeg hjælpe?")
-                .font(.system(size: 17, weight: .medium))
+        VStack(spacing: 0) {
+            Spacer(minLength: 40)
+            jarvisSparkle
+                .padding(.bottom, 30)
+            Text("Hej \(Self.greetingName)")
+                .font(.system(size: 32, weight: .regular, design: .rounded))
                 .foregroundStyle(JarvisTheme.textPrimary)
-
-            if commandRouter != nil, !availableModes.isEmpty {
-                modeQuickStartGrid
-            } else {
-                VStack(spacing: 6) {
-                    chip("Opsummer et dokument for mig")
-                    chip("Hvad sker der i nyhederne i dag?")
-                    chip("Hjælp mig med at skrive en mail")
-                }
-                .padding(.top, 6)
-            }
+            Text("Hvad har du på hjerte?")
+                .font(.system(size: 32, weight: .regular, design: .rounded))
+                .foregroundStyle(JarvisTheme.textPrimary.opacity(0.9))
+                .padding(.top, 2)
+            Spacer(minLength: 30)
         }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 24)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Multicolour Gemini-style spark with an angular gradient. Built from the
+    /// system `sparkle` SF Symbol so it stays sharp at any Dynamic Type size
+    /// and matches Apple's own Intelligence iconography.
+    private var jarvisSparkle: some View {
+        Image(systemName: "sparkle")
+            .font(.system(size: 28, weight: .semibold))
+            .foregroundStyle(
+                AngularGradient(
+                    colors: [
+                        Color(red: 0.30, green: 0.55, blue: 1.00),   // blue
+                        Color(red: 0.66, green: 0.39, blue: 0.95),   // purple
+                        Color(red: 0.95, green: 0.42, blue: 0.58),   // pink
+                        Color(red: 0.99, green: 0.72, blue: 0.30),   // amber
+                        Color(red: 0.30, green: 0.80, blue: 0.55),   // green
+                        Color(red: 0.30, green: 0.55, blue: 1.00)    // back to blue
+                    ],
+                    center: .center
+                )
+            )
+            .shadow(color: Color.white.opacity(0.20), radius: 6)
+    }
+
+    /// User's preferred first name for the greeting. Pulled from the macOS
+    /// full-name → first-token; falls back to a generic "Parti" so the UI
+    /// still reads naturally on brand-new installs.
+    private static var greetingName: String {
+        let full = NSFullUserName()
+        let trimmed = full.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return "der" }
+        return trimmed.split(separator: " ").first.map(String.init) ?? trimmed
     }
 
     private var modeQuickStartGrid: some View {

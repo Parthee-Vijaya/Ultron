@@ -53,9 +53,11 @@ class RecordingPipeline {
         // wired up, `preload()` is a no-op on the NoOp transcriber. Errors
         // are logged, not swallowed — we'd rather see a failed preload in
         // jarvis.log than silently fall back to the Gemini audio path forever.
-        Task { [transcriber = self.localTranscriber] in
+        Task { [transcriber = self.localTranscriber, hud = self.hudController] in
             do {
                 try await transcriber.preload()
+                let ready = await transcriber.isReady
+                await MainActor.run { hud.hudState.localSTTReady = ready }
             } catch {
                 LoggingService.shared.log("LocalTranscriber preload failed, falling back to Gemini audio: \(error)", level: .error)
             }

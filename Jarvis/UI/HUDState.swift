@@ -39,4 +39,9 @@ class HUDState {
     /// "Behandler…" header. Set by RecordingPipeline + GeminiClient's
     /// grounded-search path.
     var currentStep: ProcessingStep?
+    /// v1.4: whether the on-device Whisper model is loaded and ready. When
+    /// true + we're in paste-output mode, dictation is fully local and never
+    /// leaves the Mac — surfaced in the HUD as a small badge so the user has
+    /// a clear "Offline-STT aktiv" signal instead of guessing.
+    var localSTTReady: Bool = false
 }
