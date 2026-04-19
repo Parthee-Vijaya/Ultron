@@ -25,8 +25,15 @@ struct InfoModeView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
+        // Width is fixed; height is derived from the content. The earlier
+        // v1.2.1 combo of .fixedSize(vertical: true) + tile .frame(maxHeight:
+        // .infinity) triggered a window-sizing feedback loop (NSHostingView.
+        // layout → NSWindow _setFrameCommon → NSHostingView.layout …) that
+        // overflowed the main-thread stack at ~6900 frames. Removing the
+        // tile maxHeight below lets each tile report its natural height, so
+        // the outer sum is stable and NSHostingController.preferredContentSize
+        // settles on one value.
         .frame(width: 680, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
         .task { await service.refresh() }
     }
 
@@ -618,22 +625,23 @@ struct InfoModeView: View {
     }
 
     /// Compact horizontal bar showing a model's share of total tokens.
+    ///
+    /// Width is hardcoded to 120pt so no GeometryReader is needed — GeometryReader
+    /// inside an NSHostingController sized via .preferredContentSize caused a
+    /// layout-feedback crash (see InfoModeView.body comment).
     private func modelBar(model: ClaudeStatsSnapshot.ModelStat) -> some View {
         let total = service.claudeStats.totalTokens
         let share = total > 0 ? Double(model.tokens) / Double(total) : 0
-        return GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(JarvisTheme.surfaceBase.opacity(0.6))
-                    .frame(height: 5)
-                Capsule()
-                    .fill(JarvisTheme.neonCyan)
-                    .frame(width: geo.size.width * CGFloat(share), height: 5)
-                    .shadow(color: JarvisTheme.neonCyan.opacity(0.5), radius: 2)
-            }
+        let barWidth: CGFloat = 120
+        return ZStack(alignment: .leading) {
+            Capsule()
+                .fill(JarvisTheme.surfaceBase.opacity(0.6))
+            Capsule()
+                .fill(JarvisTheme.neonCyan)
+                .frame(width: barWidth * CGFloat(share))
+                .shadow(color: JarvisTheme.neonCyan.opacity(0.5), radius: 2)
         }
-        .frame(height: 5)
-        .frame(maxWidth: 120)
+        .frame(width: barWidth, height: 5)
     }
 
     private func toolIcon(_ name: String) -> String {
@@ -695,6 +703,10 @@ struct InfoModeView: View {
             if fraction >= 0.7 { return JarvisTheme.warningGlow }
             return JarvisTheme.neonCyan
         }()
+        // Bar width is pinned to the outer panel minus padding/other columns —
+        // hardcoded to keep the hosting-controller's content size stable (see
+        // InfoModeView.body comment on why GeometryReader is banned here).
+        let barWidth: CGFloat = 640
         return VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(label)
@@ -705,18 +717,16 @@ struct InfoModeView: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(.white.opacity(0.85))
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(JarvisTheme.surfaceBase.opacity(0.8))
-                        .frame(height: 6)
-                    Capsule()
-                        .fill(barColor)
-                        .frame(width: geo.size.width * CGFloat(fraction), height: 6)
-                        .shadow(color: barColor.opacity(0.6), radius: 3)
-                        .animation(.easeOut(duration: 0.4), value: fraction)
-                }
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(JarvisTheme.surfaceBase.opacity(0.8))
+                Capsule()
+                    .fill(barColor)
+                    .frame(width: barWidth * CGFloat(fraction))
+                    .shadow(color: barColor.opacity(0.6), radius: 3)
+                    .animation(.easeOut(duration: 0.4), value: fraction)
             }
+            .frame(maxWidth: barWidth, maxHeight: 6)
             .frame(height: 6)
         }
     }
@@ -868,10 +878,10 @@ struct InfoModeView: View {
         }
         .padding(12)
         .frame(maxWidth: fullWidth ? .infinity : nil, alignment: .leading)
-        // maxHeight: .infinity only applies in-row — when the tile is one of
-        // several in an HStack, every tile stretches to match the tallest.
-        // fullWidth tiles keep their natural height.
-        .frame(maxHeight: fullWidth ? nil : .infinity, alignment: .topLeading)
+        // Natural height only. A previous .frame(maxHeight: .infinity) was
+        // used for row-equal-height visual alignment, but combined with the
+        // outer hosting-controller's preferredContentSize it created a layout
+        // feedback loop that crashed the app (see InfoModeView.body comment).
         .background {
             RoundedRectangle(cornerRadius: 10)
                 .fill(JarvisTheme.surfaceElevated.opacity(0.65))

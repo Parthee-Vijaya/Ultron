@@ -318,7 +318,13 @@ class HUDWindowController {
             .jarvisHUDBackground(showReticle: false)
 
         let hostingController = NSHostingController(rootView: view)
-        hostingController.sizingOptions = .preferredContentSize
+        // DO NOT set sizingOptions = .preferredContentSize. That option tells
+        // NSHostingView to continuously observe SwiftUI's preferred size and
+        // resize the window in response. Combined with MKMapView (autoresizing
+        // mask) + any dynamic content, it spins into a setFrame → layout →
+        // setFrame loop and overflows the main-thread stack at ~6900 frames.
+        // Instead we measure the SwiftUI content's fittingSize ONCE below and
+        // pin the panel to that size.
 
         let panel = JarvisKeyablePanel(contentViewController: hostingController)
         panel.styleMask = [.borderless, .resizable, .nonactivatingPanel]
@@ -331,9 +337,19 @@ class HUDWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: 520, height: 200)
 
-        // Let the SwiftUI intrinsic content size drive the panel height; we
-        // only pin the top-right anchor after the hosting controller sets it.
-        anchorPanelTopRight(panel)
+        // One-shot measurement: force the hosting view to layout once so we
+        // can read its fittingSize. Because no window is observing it yet,
+        // there's no feedback loop.
+        hostingController.view.layoutSubtreeIfNeeded()
+        let fitting = hostingController.view.fittingSize
+        let screenVisible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let targetWidth = max(fitting.width, 680)
+        let targetHeight = min(fitting.height, screenVisible.height - 40)
+        let origin = NSPoint(
+            x: screenVisible.maxX - targetWidth - Constants.HUD.padding,
+            y: screenVisible.maxY - targetHeight - Constants.HUD.padding
+        )
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: targetWidth, height: targetHeight)), display: true)
 
         panel.orderFrontRegardless()
         panel.makeKey()
