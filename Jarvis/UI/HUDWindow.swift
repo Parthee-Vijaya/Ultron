@@ -336,16 +336,15 @@ class HUDWindowController {
         }
         cancelAutoClose()
 
-        // v1.4 polish: wrap the InfoModeView in a ScrollView so content
-        // taller than the visible screen stays reachable. Previously the
-        // height was hard-clamped to `screenVisible.height - 40` which
-        // meant everything below the clamp (System / Netværk tiles) got
-        // cut off. Now the panel caps at the same height but its content
-        // scrolls inside.
-        let scrollable = ScrollView(.vertical, showsIndicators: false) {
-            InfoModeView(service: infoModeService) { [weak self] in self?.close() }
-        }
-        let view = scrollable.jarvisHUDBackground(showReticle: false)
+        // v1.4 polish: the panel measures via fittingSize and sizes the
+        // window to match. The Cockpit now arranges tiles as two 3-cols
+        // up top + a 2×2 grid of wide tiles below, so everything fits on
+        // a laptop screen without scrolling. If a very-short display can't
+        // accommodate it, the window still clamps to screen height — but
+        // the 2×2 compaction means typical layouts no longer need a
+        // ScrollView wrapper (which was breaking per-row symmetry).
+        let view = InfoModeView(service: infoModeService) { [weak self] in self?.close() }
+            .jarvisHUDBackground(showReticle: false)
 
         let hostingController = NSHostingController(rootView: view)
         // DO NOT set sizingOptions = .preferredContentSize. That option tells
@@ -375,7 +374,7 @@ class HUDWindowController {
         hostingController.view.layoutSubtreeIfNeeded()
         let fitting = hostingController.view.fittingSize
         let screenVisible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let targetWidth = max(fitting.width, 820)
+        let targetWidth = max(fitting.width, 880)
         let targetHeight = min(fitting.height, screenVisible.height - 40)
         let origin = NSPoint(
             x: screenVisible.maxX - targetWidth - Constants.HUD.padding,

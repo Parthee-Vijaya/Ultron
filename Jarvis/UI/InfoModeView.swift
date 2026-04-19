@@ -14,29 +14,42 @@ struct InfoModeView: View {
         VStack(spacing: 0) {
             header
             VStack(spacing: 12) {
-                tilesRow
-                airAndMoonRow
-                commuteTile
-                claudeStatsTile
-                systemTile
-                networkActions
+                // Two 3-tile rows up top — Vejr/Sol/Nyheder and Luft/Måne/
+                // Kalender. Per-row `.fixedSize(vertical: true)` means the
+                // HStack's height = tallest child, so the other two tiles
+                // stretch to match (via the `.frame(maxHeight: .infinity)`
+                // in the tile shell). Safe here because the fixedSize is
+                // scoped per row, not applied at the panel root — the
+                // v1.2.3 crash was caused by the latter.
+                tilesRow.fixedSize(horizontal: false, vertical: true)
+                airAndMoonRow.fixedSize(horizontal: false, vertical: true)
+
+                // Wide tiles paired side-by-side so the panel fits on a
+                // laptop screen without scrolling. Each pair has matching
+                // heights via the same fixedSize trick.
+                HStack(alignment: .top, spacing: 12) {
+                    commuteTile
+                    claudeStatsTile
+                }
+                .fixedSize(horizontal: false, vertical: true)
+
+                HStack(alignment: .top, spacing: 12) {
+                    systemTile
+                    networkActions
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
         // v1.4 Fase 2c: share the chat window's visual language — navy
         // gradient + material + hairline stroke. Cockpit, Briefing and the
-        // corner HUD all wear the same shell now, so a user switching
-        // between them doesn't feel like they're in different apps.
+        // corner HUD all wear the same shell now.
         //
-        // Width is still fixed; height is derived from the content. See the
-        // v1.2.3 crash-fix comment on the NSHostingController feedback
-        // loop for why we can't use .fixedSize here.
-        // v1.4 Fase 2c polish: widened to 820pt + the height-clamp in
-        // `HUDWindow.anchorPanelTopRight` now wraps content in a ScrollView
-        // so tall content (full system / network / Claude-stats rows) is
-        // reachable without the panel overflowing below the visible screen.
-        .frame(width: 820, alignment: .topLeading)
+        // Width widened to 880pt so the 2×2 bottom grid has breathing room.
+        // Height still derived from content (HUDWindow clamps to screen
+        // height if the user's display is shorter than the panel wants).
+        .frame(width: 880, alignment: .topLeading)
         .jarvisChatBackdrop()
         .task { await service.refresh() }
     }
@@ -902,6 +915,13 @@ struct InfoModeView: View {
         // over the navy chat backdrop reads as a subtle glass card without
         // clashing with the shell's gradient. Hairline is also white so
         // nothing cyan/amber leaks into the tile layer.
+        //
+        // Symmetry: maxHeight: .infinity makes every tile inside its
+        // per-row `.fixedSize(vertical: true)` HStack stretch to the
+        // tallest sibling's height. All tiles in a row therefore share a
+        // height and don't look staggered, which was the v1.4-alpha visual
+        // bug on the Cockpit grid.
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.06))
