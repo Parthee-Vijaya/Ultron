@@ -78,6 +78,9 @@ def load_bridged_tools() -> dict[str, OpenJarvisToolAdapter]:
 
     _register(adapters, "openjarvis.tools.calculator", "CalculatorTool")
     _register(adapters, "openjarvis.tools.think", "ThinkTool")
+    _register(adapters, "openjarvis.tools.http_request", "HttpRequestTool")
+    _register(adapters, "openjarvis.tools.code_interpreter", "CodeInterpreterTool")
+    _register(adapters, "openjarvis.tools.apply_patch", "ApplyPatchTool")
 
     return adapters
 
