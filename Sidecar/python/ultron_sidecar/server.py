@@ -18,12 +18,15 @@ from mcp.types import TextContent, Tool
 
 from . import __version__
 from .bridge import load_bridged_tools
+from .skills import load_skill_adapters
 
 log = logging.getLogger("ultron_sidecar")
 
 server: Server = Server("ultron-sidecar")
 
 _BRIDGED = load_bridged_tools()
+_SKILLS, _SKILL_MANAGER = load_skill_adapters()
+_SKILLS_BY_NAME = {a.name: a for a in _SKILLS}
 
 _PING_TOOL = Tool(
     name="ping",
@@ -47,6 +50,7 @@ _PING_TOOL = Tool(
 async def list_tools() -> list[Tool]:
     tools: list[Tool] = [_PING_TOOL]
     tools.extend(adapter.to_mcp_tool() for adapter in _BRIDGED.values())
+    tools.extend(adapter.to_mcp_tool() for adapter in _SKILLS)
     return tools
 
 
@@ -56,7 +60,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         message = arguments.get("message", "")
         return [TextContent(type="text", text=f"pong: {message}")]
 
-    adapter = _BRIDGED.get(name)
+    adapter = _BRIDGED.get(name) or _SKILLS_BY_NAME.get(name)
     if adapter is None:
         raise ValueError(f"Unknown tool: {name}")
     return adapter.invoke(arguments)
@@ -64,7 +68,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def run() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    log.info("ultron-sidecar %s starting on stdio (bridged tools: %s)", __version__, sorted(_BRIDGED.keys()))
+    log.info(
+        "ultron-sidecar %s starting on stdio (bridged: %s; skills: %s)",
+        __version__,
+        sorted(_BRIDGED.keys()),
+        sorted(_SKILLS_BY_NAME.keys()),
+    )
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,

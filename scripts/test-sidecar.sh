@@ -114,6 +114,25 @@ try:
     assert "Phase 2a works" in text, f"unexpected think response: {text}"
     print(f"✓ tools/call think → {text!r}")
 
+    # 7) skill discovery — only asserts if ~/.ultron/skills/demo/greet-in-danish/ is installed
+    if any(t["name"] == "skill.greet-in-danish" for t in tools):
+        send(proc, {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.greet-in-danish",
+                "arguments": {"context": "name: Pavi"},
+            },
+        })
+        resp = recv(proc, 6)
+        text = resp["result"]["content"][0]["text"]
+        assert "greet-in-danish" in text and "name: Pavi" in text, \
+            f"skill output missing expected content: {text[:200]}"
+        print("✓ tools/call skill.greet-in-danish → instructions returned with context")
+    else:
+        print("⊙ skill.greet-in-danish not installed — skipping skill invocation test")
+
     print("\nAll checks passed.")
 finally:
     proc.terminate()
