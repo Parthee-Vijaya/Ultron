@@ -53,6 +53,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
     let briefingScheduler = BriefingScheduler()
+    /// Phase 4d — Meeting Mode. Shares the main audioCapture so PTT +
+    /// meeting can't run simultaneously. WhisperKit is preloaded by the
+    /// recording pipeline already, so our transcriber benefits from the
+    /// shared in-process model cache.
+    lazy var meetingRecorder = MeetingRecorderService(
+        audioCapture: audioCapture,
+        transcriber: LocalTranscribers.makeDefault()
+    )
     lazy var errorPresenter = ErrorPresenter(hudController: hudController)
     private lazy var summaryService = DocumentSummaryService(
         geminiClient: geminiClient,
@@ -121,6 +129,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return self.infoModeService.cachedDigest?.text
             }
             briefingScheduler.start()
+            // Phase 4d — wire Meeting Mode. Provider factory mirrors the
+            // briefing flow so summaries respect local-first routing + land
+            // in Læringsspor with taskType=meeting.summary.
+            do {
+                let keychain = keychainService
+                let usage = usageTracker
+                meetingRecorder.providerFactory = {
+                    ProviderRouter(factories: .init(
+                        ollama:    { OllamaProvider() },
+                        anthropic: { AnthropicProvider(keychain: keychain) },
+                        gemini:    { GeminiAIProvider(keychain: keychain, usage: usage) }
+                    ))
+                }
+                meetingRecorder.modelProvider = {
+                    UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
+                        ?? "gemma3:4b"
+                }
+                meetingRecorder.onSummary = { [weak self] summary, transcript in
+                    self?.handleMeetingSummary(summary: summary, transcript: transcript)
+                }
+            }
             // v1.4 Fase 4 slice: register ourselves as a services-menu
             // provider so "Ask Ultron about this" appears in every app's
             // Services submenu for selected text. The Info.plist NSServices
@@ -812,6 +841,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         runBriefingGeneration(openCockpit: true)
     }
 
+    @objc private func toggleMeetingMode() {
+        meetingRecorder.toggle()
+        // Give the user immediate feedback via the HUD — easy to forget the
+        // mic is hot otherwise. Confirmation auto-closes after ~3s.
+        switch meetingRecorder.state {
+        case .recording:
+            hudController.showConfirmation("Møde-optagelse startet · tryk igen for at stoppe")
+        case .transcribing:
+            hudController.showConfirmation("Transkriberer mødet…")
+        default:
+            break
+        }
+    }
+
+    /// Final summary from MeetingRecorderService — push as a faux user turn
+    /// + assistant reply so the chat history preserves the full session.
+    @MainActor
+    private func handleMeetingSummary(summary: String, transcript: String) {
+        refreshConversationHistory()
+        hudController.showChat()
+        chatSession.addUserMessage("/meeting transcript (\(transcript.count) tegn)")
+        _ = chatSession.addAssistantMessage(summary)
+        hudController.showConfirmation("Møde-referat klar")
+    }
+
     private func presentSettings(tab: SettingsTab?) {
         if let tab { settingsHostState.selectedTab = tab }
         if settingsWindow == nil {
@@ -952,6 +1006,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.runBriefingGeneration(openCockpit: true)
         }
 
+        hotkeyManager.onMeetingMode = { [weak self] in
+            self?.toggleMeetingMode()
+        }
+
         // Registration happens after this, via `hotkeyBindings.applyAll()` in applicationDidFinishLaunching.
     }
 
@@ -1021,6 +1079,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.summaryService.summarizeInteractively()
             case .digest:
                 self.runBriefingGeneration(openCockpit: true)
+            case .meeting:
+                self.toggleMeetingMode()
             }
         }
 
