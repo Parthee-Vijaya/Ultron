@@ -19,3 +19,10 @@ xcuserdata/
 # SPM
 .build/
 Packages/
+
+# Python sidecar
+Sidecar/python/.venv/
+Sidecar/python/uv.lock.local
+__pycache__/
+*.py[cod]
+*.egg-info/
