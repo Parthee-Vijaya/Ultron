@@ -863,8 +863,18 @@ struct SettingsUsagePane: View {
 
 struct SettingsAgentPane: View {
     @AppStorage(Constants.Defaults.agentClaudeModel) private var claudeModel: String = "claude-sonnet-4-6"
+    @AppStorage(Constants.Defaults.agentOllamaModel) private var ollamaModel: String = "llama3.2:latest"
     @State private var workspaceRoots: [String] = []
     @State private var newRoot: String = ""
+    @State private var ollamaModels: [String] = []
+    @State private var ollamaProbeState: OllamaProbeState = .unknown
+
+    private enum OllamaProbeState: Equatable {
+        case unknown
+        case probing
+        case running(modelCount: Int)
+        case notRunning
+    }
 
     private static let availableModels = [
         ("claude-sonnet-4-6", "Claude Sonnet 4.6 — hurtig og billig ($3/$15 per M)"),
@@ -879,7 +889,7 @@ struct SettingsAgentPane: View {
     var body: some View {
         SettingsPane(
             title: "Agent",
-            subtitle: "⌥⇧A åbner en chat hvor J.A.R.V.I.S kan læse, skrive og flytte filer — altid med din godkendelse for ændringer."
+            subtitle: "⌥⇧A åbner en chat hvor U.L.T.R.O.N kan læse, skrive og flytte filer — altid med din godkendelse for ændringer. Mode-picker i chat vælger mellem Claude (cloud) og Ollama (lokal)."
         ) {
             SettingsCard(
                 title: "Claude-model",
@@ -891,6 +901,34 @@ struct SettingsAgentPane: View {
                     }
                 }
                 .pickerStyle(.menu)
+            }
+
+            SettingsCard(
+                title: "Ollama (lokal LLM)",
+                footer: "Daemon'en kører typisk via `brew services start ollama`. Hent en tool-kapabel model med fx `ollama pull llama3.2`."
+            ) {
+                HStack(spacing: Constants.Spacing.sm) {
+                    ollamaStatusChip
+                    Spacer()
+                    Button("Gen-probe") {
+                        Task { await probeOllama() }
+                    }
+                    .controlSize(.small)
+                    .disabled(ollamaProbeState == .probing)
+                }
+
+                if ollamaModels.isEmpty {
+                    Text("Ingen modeller fundet. Kør `ollama pull llama3.2` i terminalen og tryk Gen-probe.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Model", selection: $ollamaModel) {
+                        ForEach(ollamaModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
             }
 
             SettingsCard(
@@ -965,11 +1003,49 @@ struct SettingsAgentPane: View {
         }
         .onAppear {
             workspaceRoots = UserDefaults.standard.stringArray(forKey: Constants.Defaults.agentWorkspaceRoots) ?? []
+            Task { await probeOllama() }
         }
     }
 
     private func saveRoots() {
         UserDefaults.standard.set(workspaceRoots, forKey: Constants.Defaults.agentWorkspaceRoots)
+    }
+
+    @ViewBuilder
+    private var ollamaStatusChip: some View {
+        switch ollamaProbeState {
+        case .unknown, .probing:
+            Label("Tjekker…", systemImage: "clock.arrow.circlepath")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .running(let count):
+            Label("Kører (\(count) \(count == 1 ? "model" : "modeller"))", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .notRunning:
+            Label("Ikke tilgængelig på :11434", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func probeOllama() async {
+        ollamaProbeState = .probing
+        let models = await OllamaProvider.probeInstalledModels()
+        await MainActor.run {
+            if let models {
+                ollamaModels = models.sorted()
+                ollamaProbeState = .running(modelCount: models.count)
+                // Auto-pick the first installed model if the saved preference
+                // isn't actually available (fresh install or model uninstalled).
+                if !models.contains(ollamaModel), let first = models.first {
+                    ollamaModel = first
+                }
+            } else {
+                ollamaModels = []
+                ollamaProbeState = .notRunning
+            }
+        }
     }
 }
 
