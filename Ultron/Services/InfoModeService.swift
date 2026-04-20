@@ -49,6 +49,29 @@ final class InfoModeService {
     private(set) var nextEvent: CalendarEventSnapshot?
     private(set) var calendarAccess: CalendarService.AccessState = .notDetermined
 
+    // MARK: - Phase 4c (AI briefing) state
+
+    /// Last LLM-synthesised briefing. Hydrated on app launch from the sidecar's
+    /// `digest.latest` MCP tool; updated in-place after each `regenerateDigest()`
+    /// call. Nil when the sidecar has no saved digests or the probe failed.
+    private(set) var cachedDigest: CachedDigest?
+    private(set) var isDigestGenerating = false
+    private(set) var digestError: String?
+
+    struct CachedDigest: Equatable {
+        let text: String
+        let generatedAt: Date
+        let sources: [String]
+        let model: String
+    }
+
+    /// Injected by AppDelegate during startup. The factory returns a concrete
+    /// AIProvider (router or a specific provider) that BriefingService uses to
+    /// synthesise digests. Modeled as a closure so InfoModeService doesn't need
+    /// to know about keychain / router / provider types directly.
+    var briefingProviderFactory: (() -> AIProvider)?
+    var briefingModelProvider: (() -> String)?
+
     /// Convenience: DR headlines. Kept for call sites that expect it.
     var drHeadlines: [NewsHeadline] { newsBySource[.dr] ?? [] }
 
@@ -693,4 +716,216 @@ final class InfoModeService {
             return .failure(error.localizedDescription)
         }
     }
+
+    /// Phase 4a: return a compact briefing-ready snapshot of the user's current
+    /// situation, ready to drop into an LLM prompt. Fields are included only
+    /// when they have data — the caller asks the LLM to compose a briefing
+    /// from whatever is present, so sparse machines (fresh install, offline)
+    /// still get a useful digest.
+    ///
+    /// Intended use: `ChatCommandRouter`'s `/digest` handler feeds the string
+    /// to the active mode's provider as a user prompt. The sidecar's own
+    /// Morning Digest bridge (coming in Phase 4b) will use the same surface.
+    @MainActor
+    func digestContext() -> String {
+        var lines: [String] = []
+
+        if let weather {
+            let current = weather.current
+            let today = weather.daily.first
+            var parts: [String] = [String(format: "%.0f°C", current.temperature)]
+            parts.append(String(format: "føles %.0f°C", current.feelsLike))
+            if let today {
+                parts.append(String(format: "i dag %.0f°/%.0f°", today.tempMin, today.tempMax))
+            }
+            parts.append(String(format: "vind %.0f m/s", current.windSpeed))
+            parts.append("luftfugt \(current.humidity)%")
+            lines.append("Vejr: " + parts.joined(separator: ", "))
+        }
+
+        if let commute {
+            let mins = Int((commute.expectedTravelTime / 60).rounded())
+            var commuteStr = "Rute: \(mins) min"
+            if let baseline = commute.baselineTravelTime {
+                let delay = Int(((commute.expectedTravelTime - baseline) / 60).rounded())
+                if delay > 1 {
+                    commuteStr += " (+\(delay) min vs. normalt — \(commute.trafficCondition.label))"
+                }
+            }
+            commuteStr += " · \(commute.fromLabel) → \(commute.toLabel)"
+            lines.append(commuteStr)
+        }
+
+        if let nextEvent {
+            let start = DateFormatter.localizedString(from: nextEvent.start, dateStyle: .none, timeStyle: .short)
+            lines.append("Næste event: '\(nextEvent.title)' kl. \(start)")
+        }
+
+        if !trafficEvents.isEmpty {
+            let topEvents = trafficEvents.prefix(3).map { "- \($0.category.label): \($0.title)" }.joined(separator: "\n")
+            lines.append("Trafik nær dig (\(trafficEvents.count) events):\n\(topEvents)")
+        }
+
+        let top3Dr = drHeadlines.prefix(3).map { "- [DR] \($0.title)" }
+        let top3Politiken = (newsBySource[.politiken] ?? []).prefix(3).map { "- [Politiken] \($0.title)" }
+        let top3Bbc = (newsBySource[.bbc] ?? []).prefix(3).map { "- [BBC] \($0.title)" }
+        let allNews = top3Dr + top3Politiken + top3Bbc
+        if !allNews.isEmpty {
+            lines.append("Nyheder:\n\(allNews.joined(separator: "\n"))")
+        }
+
+        if !aircraftNearby.isEmpty {
+            lines.append("Fly over dig: \(aircraftNearby.count) i nærheden")
+        }
+
+        lines.append("Måne: \(moon.phase.label), \(moon.illuminationPercent)% oplyst")
+
+        if lines.isEmpty {
+            return "(Ingen Cockpit-data endnu — åbn Cockpit med ⌥⇧I, vent på at tiles loader, og prøv /digest igen.)"
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
+    // MARK: - Phase 4c (AI briefing) actions
+
+    /// Load the most-recently-saved digest from the sidecar (`ultron__digest.latest`).
+    /// Called once on app startup from `AppDelegate`. Silently no-ops when the
+    /// sidecar tool isn't registered yet (fresh install, sidecar still bootstrapping).
+    func loadCachedDigest() async {
+        guard let tool = AgentToolRegistry.shared.tool(named: "ultron__digest.latest") else {
+            return
+        }
+        do {
+            let context = AgentContext(
+                allowedRoots: AgentContext.defaultAllowedRoots(),
+                audit: AgentAuditLog()
+            )
+            let raw = try await tool.execute([:], context)
+            if raw == "null" || raw.isEmpty {
+                cachedDigest = nil
+                return
+            }
+            cachedDigest = try parseCachedDigest(from: raw)
+        } catch {
+            LoggingService.shared.log("loadCachedDigest failed: \(error.localizedDescription)", level: .warning)
+        }
+    }
+
+    /// Generate a fresh briefing via the active AI provider, then persist it
+    /// through the sidecar so subsequent launches can hydrate the tile without
+    /// another LLM round-trip. Updates `cachedDigest` in-place when done.
+    func regenerateDigest() async {
+        guard !isDigestGenerating else { return }
+        guard let providerFactory = briefingProviderFactory,
+              let modelProvider = briefingModelProvider else {
+            digestError = "AI-briefing ikke konfigureret — relaunch appen."
+            return
+        }
+
+        isDigestGenerating = true
+        digestError = nil
+        defer { isDigestGenerating = false }
+
+        let context = digestContext()
+        let prompt = """
+        Lav en kort morgen-briefing på samme sprog som konteksten. Brug 3-5 bullet \
+        points. Vær specifik med tal (tid, temperatur, forsinkelser). Nævn kun det \
+        der faktisk står i konteksten — gæt ikke på mail, kalender eller andet der \
+        ikke er listet.
+
+        Kontekst fra Ultron Cockpit:
+
+        \(context)
+        """
+
+        let provider = providerFactory()
+        let traced = TracedAIProvider(inner: provider, type: .auto, taskType: "briefing.regenerate")
+        let model = modelProvider()
+        var options = AIRequestOptions(systemPrompt: nil, maxTokens: 800)
+        options.temperature = 0.3
+
+        do {
+            let response = try await traced.send(
+                model: model,
+                messages: [.user(prompt)],
+                options: options
+            )
+            let text = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else {
+                digestError = "LLM returnerede tomt svar."
+                return
+            }
+            let digest = CachedDigest(
+                text: text,
+                generatedAt: Date(),
+                sources: inferSources(),
+                model: model
+            )
+            cachedDigest = digest
+            await persistDigest(digest)
+        } catch {
+            digestError = error.localizedDescription
+            LoggingService.shared.log("regenerateDigest failed: \(error.localizedDescription)", level: .warning)
+        }
+    }
+
+    /// Persist via sidecar. Failure is logged but doesn't propagate — the
+    /// in-memory `cachedDigest` is still good for this session.
+    private func persistDigest(_ digest: CachedDigest) async {
+        guard let tool = AgentToolRegistry.shared.tool(named: "ultron__digest.save") else {
+            return
+        }
+        do {
+            let context = AgentContext(
+                allowedRoots: AgentContext.defaultAllowedRoots(),
+                audit: AgentAuditLog()
+            )
+            _ = try await tool.execute([
+                "text": digest.text,
+                "sources": digest.sources,
+                "model": digest.model
+            ], context)
+        } catch {
+            LoggingService.shared.log("persistDigest failed: \(error.localizedDescription)", level: .warning)
+        }
+    }
+
+    /// Which Cockpit sources actually had data this digest — captured as tags
+    /// so sidecar `digest.history` can filter on "briefings with calendar".
+    private func inferSources() -> [String] {
+        var sources: [String] = []
+        if weather != nil { sources.append("weather") }
+        if commute != nil { sources.append("commute") }
+        if nextEvent != nil { sources.append("calendar") }
+        if !trafficEvents.isEmpty { sources.append("traffic") }
+        if !drHeadlines.isEmpty || newsBySource[.politiken] != nil { sources.append("news") }
+        return sources
+    }
+
+    private func parseCachedDigest(from json: String) throws -> CachedDigest? {
+        guard let data = json.data(using: .utf8),
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let text = (root["text"] as? String) ?? ""
+        let model = (root["model"] as? String) ?? "unknown"
+        let sources = (root["sources"] as? [String]) ?? []
+        let generatedAt: Date = {
+            if let iso = root["generated_at"] as? String,
+               let date = ISO8601DateFormatter.withFractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) {
+                return date
+            }
+            return Date()
+        }()
+        guard !text.isEmpty else { return nil }
+        return CachedDigest(text: text, generatedAt: generatedAt, sources: sources, model: model)
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static let withFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 }

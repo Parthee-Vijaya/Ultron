@@ -26,7 +26,7 @@ final class AgentChatPipeline {
     /// Resolved exactly once from the UI layer via approve/reject.
     private var pendingContinuation: CheckedContinuation<Bool, Never>?
 
-    init(provider: AnthropicProvider, chatSession: ChatSession, modelID: String = "claude-sonnet-4-6") {
+    init(provider: AIProvider, chatSession: ChatSession, modelID: String = "claude-sonnet-4-6") {
         self.agent = AgentService(provider: provider)
         self.chatSession = chatSession
         self.modelID = modelID

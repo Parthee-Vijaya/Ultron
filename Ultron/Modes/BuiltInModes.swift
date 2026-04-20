@@ -205,5 +205,62 @@ enum BuiltInModes {
         inputKind: .document
     )
 
-    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize, agent]
+    /// v1.5 Phase 3a: Ollama-backed agent mode. Requires a local Ollama daemon
+    /// running on :11434 with a tool-capable model installed (llama3.2, qwen2.5,
+    /// etc.). Mode picker shows it alongside Claude-backed agent.
+    static let ollamaAgent = Mode(
+        id: UUID(uuidString: "00000000-0000-0000-0000-00000000000a")!,
+        name: "Ollama Agent",
+        systemPrompt: """
+        Du er U.L.T.R.O.N i agent-mode med en lokal LLM. Du får adgang til \
+        filværktøjer og eventuelle brugerinstallerede skills. Brugeren kører dig \
+        lokalt for privatlivets skyld — vær ærlig om hvad du kan og ikke kan \
+        uden cloud-model.
+
+        Arbejdsgang:
+        1. Brug værktøjer til at samle kontekst.
+        2. Svar kort og præcist.
+        3. Samme sprog som brugeren.
+        """,
+        model: .flash,  // placeholder — Ollama has its own model selection
+        outputType: .chat,
+        maxTokens: 4096,
+        isBuiltIn: true,
+        webSearch: false,
+        provider: .ollama,
+        agentTools: true,
+        icon: "bolt.horizontal.circle",
+        inputKind: .text
+    )
+
+    /// v1.5 Phase 3d: auto-routed agent. ProviderRouter picks at call time
+    /// based on battery state, modality, and task complexity — Ollama first
+    /// when available, Claude for heavy tool use, Gemini for vision. Falls
+    /// back cleanly when the daemon isn't running.
+    static let autoAgent = Mode(
+        id: UUID(uuidString: "00000000-0000-0000-0000-00000000000b")!,
+        name: "Auto Agent",
+        systemPrompt: """
+        Du er U.L.T.R.O.N i auto-mode. Routeren vælger mellem lokal Ollama, \
+        Claude og Gemini pr. forespørgsel baseret på batteri, modalitet og \
+        opgavekompleksitet — brugeren kan se hvilken provider der svarede i \
+        Settings → Læringsspor.
+
+        Arbejdsgang:
+        1. Brug værktøjer til at samle evidens.
+        2. Svar kort og præcist.
+        3. Samme sprog som brugeren.
+        """,
+        model: .flash,  // placeholder — router swaps per-call to match the chosen provider
+        outputType: .chat,
+        maxTokens: 4096,
+        isBuiltIn: true,
+        webSearch: false,
+        provider: .auto,
+        agentTools: true,
+        icon: "sparkles.rectangle.stack",
+        inputKind: .text
+    )
+
+    static let all: [Mode] = [dictation, vibeCode, professional, qna, vision, chat, translate, summarize, agent, ollamaAgent, autoAgent]
 }

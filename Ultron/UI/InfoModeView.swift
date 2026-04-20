@@ -71,6 +71,12 @@ struct InfoModeView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+
+                // Phase 4c: bottom briefing tile — raw Cockpit snapshot in
+                // digest form, with a one-click "Åbn i chat" that pre-fills
+                // the `/digest` command for LLM synthesis.
+                briefingTile
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -2106,5 +2112,90 @@ struct InfoModeView: View {
         if seconds < 60 { return "\(seconds)s" }
         if seconds < 3600 { return "\(seconds / 60)m" }
         return "\(seconds / 3600)t"
+    }
+
+    // MARK: - Phase 4c briefing tile
+
+    /// Bottom Cockpit tile: when we have a cached AI-synthesised briefing,
+    /// show that. Otherwise fall back to the raw `/digest` context so the
+    /// user always sees something actionable. Regenerate button triggers a
+    /// background LLM call via the ProviderRouter (respects local-first
+    /// routing) + persists via the sidecar so next launch hydrates without
+    /// another round-trip.
+    @ViewBuilder
+    private var briefingTile: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            briefingHeader
+            briefingBody
+            if let error = service.digestError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(0.18))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var briefingHeader: some View {
+        HStack(spacing: 8) {
+            Label(briefingTitle, systemImage: "newspaper")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let cached = service.cachedDigest {
+                Text("· \(cached.model) · \(timeAgo(cached.generatedAt))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if service.isDigestGenerating {
+                ProgressView().controlSize(.small)
+            }
+            Button {
+                Task { await service.regenerateDigest() }
+            } label: {
+                Label(service.cachedDigest == nil ? "Generer briefing" : "Regenerer", systemImage: "sparkles")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(service.isDigestGenerating)
+            Button {
+                let url = URL(string: "ultron://chat?prompt=/digest")!
+                NSWorkspace.shared.open(url)
+            } label: {
+                Label("Åbn i chat", systemImage: "arrowshape.turn.up.right")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private var briefingTitle: String {
+        service.cachedDigest == nil ? "Briefing-kladde (rå data)" : "AI-briefing"
+    }
+
+    @ViewBuilder
+    private var briefingBody: some View {
+        if let cached = service.cachedDigest {
+            Text(cached.text)
+                .font(.callout)
+                .textSelection(.enabled)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(service.digestContext())
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.primary.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

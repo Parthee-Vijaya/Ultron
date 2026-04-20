@@ -28,7 +28,9 @@ final class ChatCommandRouter {
     }
 
     private let chatPipeline: ChatPipeline
-    private let agentChatPipeline: () -> AgentChatPipeline?
+    /// Factory keyed by provider type — Anthropic vs Ollama pipelines share
+    /// the AgentChatPipeline class but get different AIProvider backings.
+    private let agentChatPipeline: (AIProviderType) -> AgentChatPipeline?
     private let geminiClient: GeminiClient
     private let screenCapture: ScreenCaptureService
     private let summaryService: DocumentSummaryService
@@ -38,15 +40,20 @@ final class ChatCommandRouter {
     /// Optional so older callers (hotkey-only codepaths) can still construct
     /// the router without a full InfoModeService instance.
     private let instantAnswers: InstantAnswerProvider?
+    /// Phase 4a: optional InfoModeService reference so `/digest` can pull the
+    /// current Cockpit snapshot. Left optional so older hotkey-only code paths
+    /// (which don't need digest) can still construct the router.
+    private let infoModeService: InfoModeService?
 
     init(
         chatPipeline: ChatPipeline,
-        agentChatPipeline: @escaping () -> AgentChatPipeline?,
+        agentChatPipeline: @escaping (AIProviderType) -> AgentChatPipeline?,
         geminiClient: GeminiClient,
         screenCapture: ScreenCaptureService,
         summaryService: DocumentSummaryService,
         chatSession: ChatSession,
-        instantAnswers: InstantAnswerProvider? = nil
+        instantAnswers: InstantAnswerProvider? = nil,
+        infoModeService: InfoModeService? = nil
     ) {
         self.chatPipeline = chatPipeline
         self.agentChatPipeline = agentChatPipeline
@@ -55,6 +62,7 @@ final class ChatCommandRouter {
         self.summaryService = summaryService
         self.chatSession = chatSession
         self.instantAnswers = instantAnswers
+        self.infoModeService = infoModeService
     }
 
     // MARK: - Public
@@ -122,10 +130,57 @@ final class ChatCommandRouter {
         }
     }
 
+    // MARK: - /digest (Phase 4a)
+
+    /// Build a briefing prompt from the current Cockpit snapshot and send it
+    /// through the active mode's pipeline. User sees the prompt expanded in
+    /// the chat (so they can see what context the LLM got) followed by the
+    /// LLM's reply streamed in.
+    private func runDigest(mode: Mode, extraContext: String) async {
+        guard let info = infoModeService else {
+            chatSession.addUserMessage("/digest")
+            _ = chatSession.addAssistantMessage("Digest-kommandoen er ikke wired op i denne build (InfoModeService mangler).")
+            return
+        }
+        let snapshot = info.digestContext()
+        var userFacing = "/digest"
+        if !extraContext.isEmpty { userFacing += " " + extraContext }
+
+        let extraNote = extraContext.isEmpty ? "" : "\n\nBrugerens ekstra kontekst: \(extraContext)"
+        let prompt = """
+        Lav en kort morgen-briefing på samme sprog som konteksten. Brug 3-5 bullet \
+        points. Vær specifik med tal (tid, temperatur, forsinkelser). Nævn kun det \
+        der faktisk står i konteksten — gæt ikke på mail, kalender eller andet der \
+        ikke er listet.
+
+        Kontekst fra Ultron Cockpit:
+
+        \(snapshot)\(extraNote)
+        """
+
+        chatSession.addUserMessage(userFacing)
+
+        if mode.provider != .gemini, mode.agentTools,
+           let agent = agentChatPipeline(mode.provider) {
+            agent.sendTextMessage(prompt)
+        } else {
+            chatPipeline.sendTextMessage(prompt, mode: mode)
+        }
+    }
+
     // MARK: - Text (Chat / Q&A / Translate / Agent / custom text modes)
 
     private func runText(mode: Mode, input: String) async {
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        // Phase 4a: /digest command — expand into a briefing prompt using the
+        // current Cockpit snapshot. Runs through the normal pipeline so it
+        // respects the mode's provider (Claude, Ollama, Gemini), tools, etc.
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("/digest") {
+            await runDigest(mode: mode, extraContext: String(trimmed.dropFirst("/digest".count)).trimmingCharacters(in: .whitespaces))
+            return
+        }
 
         // v1.4 Fase 3 preflight: for plain chat / Q&A / default text modes,
         // try the instant-answer provider before reaching for the network.
@@ -144,8 +199,10 @@ final class ChatCommandRouter {
             return
         }
 
-        if mode.provider == .anthropic, mode.agentTools,
-           let agent = agentChatPipeline() {
+        // Providers that go through the agent pipeline (Anthropic + Ollama).
+        // Gemini routes through ChatPipeline below.
+        if mode.provider != .gemini, mode.agentTools,
+           let agent = agentChatPipeline(mode.provider) {
             agent.sendTextMessage(input)
         } else {
             // Gemini path — reuses ChatPipeline but with the picked mode's
@@ -322,8 +379,8 @@ final class ChatCommandRouter {
     }
 
     private func retryText(message: ChatMessage, mode: Mode, prompt: String) async {
-        let pipeline = (mode.provider == .anthropic && mode.agentTools)
-            ? agentChatPipeline()
+        let pipeline = (mode.provider != .gemini && mode.agentTools)
+            ? agentChatPipeline(mode.provider)
             : nil
 
         if let agent = pipeline {

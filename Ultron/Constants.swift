@@ -107,6 +107,9 @@ enum Constants {
         static let claudeDailyLimitTokens = "claudeDailyLimitTokens"
         static let claudeWeeklyLimitTokens = "claudeWeeklyLimitTokens"
         static let agentClaudeModel = "agentClaudeModel"
+        /// v1.5 Phase 3a: which local Ollama model to use when a Mode's
+        /// provider is `.ollama`. User picks from probed tags in Settings.
+        static let agentOllamaModel = "agentOllamaModel"
         static let agentWorkspaceRoots = "agentWorkspaceRoots"
         /// v1.1.7: newline-separated list of additional program names the user
         /// trusts for `run_shell` beyond the built-in defaults.
