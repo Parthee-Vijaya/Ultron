@@ -138,7 +138,7 @@ final class ProviderRouter: AIProvider {
         switch provider {
         case .ollama:
             return UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
-                ?? "llama3.2:latest"
+                ?? "gemma3:4b"
         case .anthropic:
             return UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel)
                 ?? "claude-sonnet-4-6"
