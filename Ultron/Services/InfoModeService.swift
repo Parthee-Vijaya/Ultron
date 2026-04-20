@@ -693,4 +693,73 @@ final class InfoModeService {
             return .failure(error.localizedDescription)
         }
     }
+
+    /// Phase 4a: return a compact briefing-ready snapshot of the user's current
+    /// situation, ready to drop into an LLM prompt. Fields are included only
+    /// when they have data — the caller asks the LLM to compose a briefing
+    /// from whatever is present, so sparse machines (fresh install, offline)
+    /// still get a useful digest.
+    ///
+    /// Intended use: `ChatCommandRouter`'s `/digest` handler feeds the string
+    /// to the active mode's provider as a user prompt. The sidecar's own
+    /// Morning Digest bridge (coming in Phase 4b) will use the same surface.
+    @MainActor
+    func digestContext() -> String {
+        var lines: [String] = []
+
+        if let weather {
+            let current = weather.current
+            let today = weather.daily.first
+            var parts: [String] = [String(format: "%.0f°C", current.temperature)]
+            parts.append(String(format: "føles %.0f°C", current.feelsLike))
+            if let today {
+                parts.append(String(format: "i dag %.0f°/%.0f°", today.tempMin, today.tempMax))
+            }
+            parts.append(String(format: "vind %.0f m/s", current.windSpeed))
+            parts.append("luftfugt \(current.humidity)%")
+            lines.append("Vejr: " + parts.joined(separator: ", "))
+        }
+
+        if let commute {
+            let mins = Int((commute.expectedTravelTime / 60).rounded())
+            var commuteStr = "Rute: \(mins) min"
+            if let baseline = commute.baselineTravelTime {
+                let delay = Int(((commute.expectedTravelTime - baseline) / 60).rounded())
+                if delay > 1 {
+                    commuteStr += " (+\(delay) min vs. normalt — \(commute.trafficCondition.label))"
+                }
+            }
+            commuteStr += " · \(commute.fromLabel) → \(commute.toLabel)"
+            lines.append(commuteStr)
+        }
+
+        if let nextEvent {
+            let start = DateFormatter.localizedString(from: nextEvent.start, dateStyle: .none, timeStyle: .short)
+            lines.append("Næste event: '\(nextEvent.title)' kl. \(start)")
+        }
+
+        if !trafficEvents.isEmpty {
+            let topEvents = trafficEvents.prefix(3).map { "- \($0.category.label): \($0.title)" }.joined(separator: "\n")
+            lines.append("Trafik nær dig (\(trafficEvents.count) events):\n\(topEvents)")
+        }
+
+        let top3Dr = drHeadlines.prefix(3).map { "- [DR] \($0.title)" }
+        let top3Politiken = (newsBySource[.politiken] ?? []).prefix(3).map { "- [Politiken] \($0.title)" }
+        let top3Bbc = (newsBySource[.bbc] ?? []).prefix(3).map { "- [BBC] \($0.title)" }
+        let allNews = top3Dr + top3Politiken + top3Bbc
+        if !allNews.isEmpty {
+            lines.append("Nyheder:\n\(allNews.joined(separator: "\n"))")
+        }
+
+        if !aircraftNearby.isEmpty {
+            lines.append("Fly over dig: \(aircraftNearby.count) i nærheden")
+        }
+
+        lines.append("Måne: \(moon.phase.label), \(moon.illuminationPercent)% oplyst")
+
+        if lines.isEmpty {
+            return "(Ingen Cockpit-data endnu — åbn Cockpit med ⌥⇧I, vent på at tiles loader, og prøv /digest igen.)"
+        }
+        return lines.joined(separator: "\n\n")
+    }
 }

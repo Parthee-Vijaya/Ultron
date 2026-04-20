@@ -295,7 +295,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             screenCapture: screenCapture,
             summaryService: summaryService,
             chatSession: chatSession,
-            instantAnswers: InstantAnswerProvider(infoModeService: infoModeService)
+            instantAnswers: InstantAnswerProvider(infoModeService: infoModeService),
+            infoModeService: infoModeService
         )
         commandRouter = router
         hudController.commandRouter = router
@@ -538,17 +539,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let pipeline = agentChatPipelines[providerType] { return pipeline }
 
         let pipeline: AgentChatPipeline
+        let keychain = keychainService
         switch providerType {
         case .anthropic:
-            let provider = AnthropicProvider(keychain: keychainService)
+            let inner = AnthropicProvider(keychain: keychain)
+            let traced = TracedAIProvider(inner: inner, type: .anthropic, taskType: "agent.claude")
             let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel)
                 ?? "claude-sonnet-4-6"
-            pipeline = AgentChatPipeline(provider: provider, chatSession: chatSession, modelID: modelID)
+            pipeline = AgentChatPipeline(provider: traced, chatSession: chatSession, modelID: modelID)
         case .ollama:
-            let provider = OllamaProvider()
+            let inner = OllamaProvider()
+            let traced = TracedAIProvider(inner: inner, type: .ollama, taskType: "agent.ollama")
             let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
                 ?? "llama3.2:latest"
-            pipeline = AgentChatPipeline(provider: provider, chatSession: chatSession, modelID: modelID)
+            pipeline = AgentChatPipeline(provider: traced, chatSession: chatSession, modelID: modelID)
+        case .auto:
+            let router = ProviderRouter(factories: .init(
+                ollama:    { OllamaProvider() },
+                anthropic: { AnthropicProvider(keychain: keychain) },
+                // Gemini path: ProviderRouter never routes to this factory
+                // (Gemini chat uses a different non-AIProvider pipeline),
+                // but we still need a conformer for the enum exhaustiveness.
+                // If the router ever picks .gemini we surface an explanatory
+                // error via this stub.
+                gemini:    { UnsupportedGeminiProvider() }
+            ))
+            // Prefer the Ollama default model for agent-mode auto; the router
+            // swaps to the right one per decision.
+            let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
+                ?? "llama3.2:latest"
+            pipeline = AgentChatPipeline(provider: router, chatSession: chatSession, modelID: modelID)
         case .gemini:
             // Gemini routes through ChatPipeline (non-agent), not this one.
             return nil
