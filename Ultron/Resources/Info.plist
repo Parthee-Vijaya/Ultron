@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Ultron needs microphone access to record your voice for dictation and AI commands.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Ultron needs screen capture access for Vision mode to analyze what's on your screen.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Ultron uses on-device speech recognition to show a live preview of what you're saying in the HUD. No audio leaves your Mac for this preview.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Ultron uses your location to show weather for your area in Uptodate mode. You can also set a city manually in Settings if you prefer.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Ultron shows your next calendar event as a tile in the Cockpit panel. Access is read-only.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Ultron shows your next calendar event as a tile in the Cockpit panel. Access is read-only.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Ultron shows Bluetooth connectivity and connected devices in the Cockpit Handlinger tile. No data is sent anywhere.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>pavi.Ultron.url</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>ultron</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Ask Ultron about this</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>askUltronAboutSelection</string>
+            <key>NSPortName</key>
+            <string>Ultron</string>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.utf8-plain-text</string>
+                <string>NSStringPboardType</string>
+            </array>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSTextContent</key>
+                <string>Plain</string>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

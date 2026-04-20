@@ -1,6 +1,6 @@
-# Jarvis v5.0 Roadmap
+# Ultron v5.0 Roadmap
 
-**Theme:** *Agent-era Jarvis* — a multi-provider, agentic, localised, and
+**Theme:** *Agent-era Ultron* — a multi-provider, agentic, localised, and
 production-polished assistant. From "cool demo" to "daily tool".
 
 Scope is deliberately broad. The plan ships in **four incremental milestones**
@@ -56,7 +56,7 @@ Goal: stop paying tax on an outdated SDK, add a safety net.
 ### A3. Central error router
 - Today we have scattered `hudController.showError(...)` calls with
   inconsistent formatting. Replace with `ErrorPresenter.surface(_ error: Error, context: String)` that:
-  - Logs with context to `jarvis.log`
+  - Logs with context to `ultron.log`
   - Shows the right HUD variant (inline vs permission vs critical)
   - Knows about common error domains (URL, AX, Porcupine, Gemini) and shows
     a friendly Danish message for each
@@ -75,7 +75,7 @@ Goal: stop paying tax on an outdated SDK, add a safety net.
 
 ### A5. CI (GitHub Actions)
 - `.github/workflows/ci.yml` running on every push + PR:
-  - `xcodebuild -scheme Jarvis -destination 'platform=macOS' build test`
+  - `xcodebuild -scheme Ultron -destination 'platform=macOS' build test`
   - Cache SPM deps
   - On `main`, additionally build the Release DMG and attach as artifact
 - Badge in README.
@@ -88,10 +88,10 @@ Goal: stop paying tax on an outdated SDK, add a safety net.
 
 ## β — Agent mode (`v5.0.0-beta`)
 
-Goal: Jarvis can **do** things on your Mac, not just talk about them.
+Goal: Ultron can **do** things on your Mac, not just talk about them.
 
 ### B1. Tool registry
-- Protocol + built-in tools (each a separate file under `Jarvis/Agent/Tools/`):
+- Protocol + built-in tools (each a separate file under `Ultron/Agent/Tools/`):
   - **Read-only (no confirm):** `read_file`, `list_directory`, `search_files` (glob), `stat_file`
   - **Destructive (confirm):** `write_file`, `edit_file` (line-range replace), `rename_file`, `delete_file`, `create_directory`
   - **Shell (confirm + whitelist):** `run_shell` — accepts a whitelist of command roots (`ls`, `cat`, `git status`, `grep`, `find`, `rg`). Anything else prompts.
@@ -99,16 +99,16 @@ Goal: Jarvis can **do** things on your Mac, not just talk about them.
 
 ### B2. Confirmation UI
 - When the model requests a destructive tool, the chat HUD inserts an inline
-  card: "Jarvis vil *write* `~/Documents/rapport.md` (2.3 KB) — [Tillad] [Afvis]".
+  card: "Ultron vil *write* `~/Documents/rapport.md` (2.3 KB) — [Tillad] [Afvis]".
 - `Agent.Allowlist`: if user checks "husk dette" the path/command is remembered
-  in `~/Library/Application Support/Jarvis/agent-allowlist.json` so next time
+  in `~/Library/Application Support/Ultron/agent-allowlist.json` so next time
   the tool runs without prompting.
 - First-run safety: allowlist scope defaults to `~/Desktop`, `~/Downloads`,
-  `~/Documents/Jarvis/` — anything outside prompts even if allowlisted elsewhere.
+  `~/Documents/Ultron/` — anything outside prompts even if allowlisted elsewhere.
 
 ### B3. Workspace boundary
 - Settings → Advanced → "Agent filadgang" lets user add/remove allowed roots.
-- Jarvis absolutely refuses to write/delete outside those paths (hard guard in
+- Ultron absolutely refuses to write/delete outside those paths (hard guard in
   each destructive tool).
 
 ### B4. Agent chat UI
@@ -118,7 +118,7 @@ Goal: Jarvis can **do** things on your Mac, not just talk about them.
 - Tool calls render as expandable cards in the message stream with input/output.
 
 ### B5. Audit log
-- Every tool execution writes to `~/Library/Logs/Jarvis/agent.log`:
+- Every tool execution writes to `~/Library/Logs/Ultron/agent.log`:
   - ISO timestamp
   - Conversation UUID
   - Tool name
@@ -139,7 +139,7 @@ Goal: Jarvis can **do** things on your Mac, not just talk about them.
 
 ## rc — Polish (`v5.0.0`)
 
-Goal: the release cut where Jarvis goes from "fun side project" to
+Goal: the release cut where Ultron goes from "fun side project" to
 "something my non-dev friend would actually use".
 
 ### P1. Settings reorganisation
@@ -151,7 +151,7 @@ Goal: the release cut where Jarvis goes from "fun side project" to
 
 ### P2. Onboarding v2
 - Replace the current single-pane onboarding with a 5-step wizard:
-  1. Welcome + what Jarvis does (3 bullets)
+  1. Welcome + what Ultron does (3 bullets)
   2. Get/paste a Gemini API key (or "skip for now")
   3. Mic + Accessibility + Screen Recording permissions, in sequence
   4. *(Optional)* Home address for Info mode
@@ -172,7 +172,7 @@ Goal: the release cut where Jarvis goes from "fun side project" to
   setting.
 
 ### P5. Central log rotation
-- Cap `jarvis.log` at 5 MB. On rotate, move to `.1`, `.2`, `.3`.
+- Cap `ultron.log` at 5 MB. On rotate, move to `.1`, `.2`, `.3`.
 - `agent.log` follows the same pattern (10 MB cap since tool calls are verbose).
 
 ### P6. File split
@@ -190,14 +190,14 @@ Goal: the release cut where Jarvis goes from "fun side project" to
 
 ## +1 — Feature pack (`v5.1.0`)
 
-Goal: push Jarvis into new workflows beyond voice Q&A.
+Goal: push Ultron into new workflows beyond voice Q&A.
 
 ### F1. Meeting mode
 - **Hotkey:** `⌥⇧M` (rebindable).
 - Recording up to **120 minutes** (vs the 60-second limit for voice modes).
 - Streams audio in 2-minute chunks to Gemini so latency stays bounded.
 - Output: structured markdown notes (attendees, agenda, decisions, action
-  items, open questions) auto-saved to `~/Documents/Jarvis Meetings/YYYY-MM-DD HH-MM.md`.
+  items, open questions) auto-saved to `~/Documents/Ultron Meetings/YYYY-MM-DD HH-MM.md`.
 - HUD shows elapsed + level meter + a "Pause" + "End" button.
 
 ### F2. Clipboard history
@@ -208,7 +208,7 @@ Goal: push Jarvis into new workflows beyond voice Q&A.
 - Stored in memory only (privacy). User can opt into persisting to disk.
 
 ### F3. Email draft mode
-- **Hotkey:** `⌥⇧E`. Jarvis reads the currently-selected text across any app
+- **Hotkey:** `⌥⇧E`. Ultron reads the currently-selected text across any app
   (via AX), plus asks "what should the reply say?" in a small HUD input.
 - Drafts a reply in your voice (trained on the selected text's tone).
 - Paste via `⌘V` or opens Mail.app with pre-populated draft.
@@ -225,7 +225,7 @@ Goal: push Jarvis into new workflows beyond voice Q&A.
 
 ### F5. Audio file transcription
 - Drag a `.wav` / `.mp3` / `.m4a` / `.aac` file onto the HUD or menu-bar icon.
-- Jarvis uploads to Gemini with a transcription prompt, returns cleaned text +
+- Ultron uploads to Gemini with a transcription prompt, returns cleaned text +
   summary. Saves to `.txt` alongside the source.
 
 ### F6. Custom mode editor v2
@@ -245,11 +245,11 @@ Goal: ship properly so random users aren't blocked by macOS Gatekeeper.
 
 ### D1. Shortcuts / Siri via App Intents
 - Expose the fast-path actions as `AppIntent`:
-  - "Jarvis, summarize this document" (takes a file param)
+  - "Ultron, summarize this document" (takes a file param)
   - "Open Uptodate"
   - "Open Info mode"
   - "Start meeting recording"
-- This also lets Siri invoke them ("Hey Siri, Jarvis meeting mode").
+- This also lets Siri invoke them ("Hey Siri, Ultron meeting mode").
 
 ### D2. Sparkle auto-update
 - Add Sparkle 2.x SPM package.
@@ -288,7 +288,7 @@ Not its own phase — I do a handful in each milestone:
 - **SwiftUI perf** — reduce body re-renders in HUDContentView (currently
   triggers on every `@Observable` change even for tiles that didn't change).
   Use `EquatableView` or `@ViewBuilder` memoization.
-- **`Jarvis.xcodeproj` cleanup** — the file-system-synced group is convenient
+- **`Ultron.xcodeproj` cleanup** — the file-system-synced group is convenient
   but some metadata (build phase config for Info.plist) still needs manual
   upkeep. Document it.
 
@@ -317,9 +317,9 @@ Not its own phase — I do a handful in each milestone:
 
 Just so we're clear about what I'm *not* going to do:
 
-- Cross-platform (iOS / Linux) port — Jarvis stays macOS-only.
+- Cross-platform (iOS / Linux) port — Ultron stays macOS-only.
 - Multi-user / team sync — single-user tool.
 - Full conversational memory across sessions — the existing per-conversation
   history is enough; no vector store or long-term memory graph.
-- Plugin API for third-party modes — mode system stays Jarvis-internal.
+- Plugin API for third-party modes — mode system stays Ultron-internal.
 - In-app Claude Code replacement — we show stats for it, we don't replicate it.

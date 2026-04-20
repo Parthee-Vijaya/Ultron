@@ -58,7 +58,7 @@ Brugerdefinerede modes kan oprettes i Settings → Modes.
 
 ### Stemmekommandoer
 
-- Valgfri voice-command-service ("Jarvis spørg…", "Jarvis info", osv.)
+- Valgfri voice-command-service ("Ultron spørg…", "Ultron info", osv.)
 - Auto-mute under optagelse så kommandoer ikke dobbelt-udløser
 - Porcupine wake-word planlagt til β-milestone
 
@@ -86,7 +86,7 @@ Brugerdefinerede modes kan oprettes i Settings → Modes.
    historik slutter på `model`-tur. Drain-loop tilføjet så flere trailing
    user-turns (f.eks. efter crash-recovery) ikke forvirrer modellen.
 3. **Voice-command race** — `VoiceCommandService.suspend()/resume()` pauser
-   genkendelsen i 4s optagelse + 500ms tail, så "Jarvis spørg…" ikke
+   genkendelsen i 4s optagelse + 500ms tail, så "Ultron spørg…" ikke
    dobbelt-trigger på den rullende buffer.
 
 Alle 29 unit-tests grønne.
@@ -137,8 +137,8 @@ Alle 29 unit-tests grønne.
 - **API-nøgler** opbevares i macOS Keychain (aldrig på disk)
 - **Lyd** fanges kun i hukommelsen — aldrig gemt
 - **Screenshots** (Vision-mode) holdes i memory under API-kald, derefter slettet
-- **Logs** skrives til `~/Library/Logs/Jarvis/jarvis.log`
-- **Forbrugsdata** gemmes lokalt i `~/Library/Application Support/Jarvis/usage.json`
+- **Logs** skrives til `~/Library/Logs/Ultron/ultron.log`
+- **Forbrugsdata** gemmes lokalt i `~/Library/Application Support/Ultron/usage.json`
 - Kun API-kald til Google/Anthropic forlader maskinen
 
 ---
@@ -161,15 +161,15 @@ Agent-mode (β) bruger Claude.
 
 ### β — Agent mode (`v5.0.0-beta`)
 
-Jarvis kan **gøre** ting på din Mac — ikke kun snakke om dem.
+Ultron kan **gøre** ting på din Mac — ikke kun snakke om dem.
 
 - Tool-registry: `read_file`, `list_directory`, `search_files`, `stat_file`
   (ingen bekræftelse) + `write_file`, `edit_file`, `rename_file`,
   `delete_file`, `create_directory`, `run_shell` (med bekræftelse)
-- Inline confirmation-cards i chat-HUD ("Jarvis vil *write* `X` — [Tillad]/[Afvis]")
+- Inline confirmation-cards i chat-HUD ("Ultron vil *write* `X` — [Tillad]/[Afvis]")
 - Workspace-boundary: hard-guard på tilladte rødder
 - Agent-chat UI med visuelt skel (cyan-lilla gradient)
-- Audit-log i `~/Library/Logs/Jarvis/agent.log`
+- Audit-log i `~/Library/Logs/Ultron/agent.log`
 - Rate limit (max 20 tool-calls pr. tur) og time-of-use AX-check
 - Porcupine wake-word som SPM
 
@@ -194,7 +194,7 @@ Jarvis kan **gøre** ting på din Mac — ikke kun snakke om dem.
 
 ### v5.2 — Distribution
 
-- App Intents / Siri ("Hey Siri, Jarvis meeting mode")
+- App Intents / Siri ("Hey Siri, Ultron meeting mode")
 - Sparkle 2.x auto-update + appcast på GitHub Pages
 - Developer ID-signering + notarization (Gatekeeper-clean DMG)
 - CHANGELOG, architecture.md, CONTRIBUTING.md
@@ -204,15 +204,15 @@ Jarvis kan **gøre** ting på din Mac — ikke kun snakke om dem.
 ## Installation
 
 ### Fra DMG
-1. Download `Jarvis-2.0.dmg`
+1. Download `Ultron-2.0.dmg`
 2. Træk til Applications
 3. Start fra Applications
 
 ### Byg fra kilde
 ```bash
-git clone git@github.com:Parthee-Vijaya/JarvisHUD.git
-cd JarvisHUD
-xcodebuild -project Jarvis.xcodeproj -scheme Jarvis -configuration Release build
+git clone git@github.com:Parthee-Vijaya/UltronHUD.git
+cd UltronHUD
+xcodebuild -project Ultron.xcodeproj -scheme Ultron -configuration Release build
 # eller byg DMG:
 ./build-dmg.sh
 ```
@@ -221,7 +221,7 @@ Kræver Xcode 26+ med macOS 14+ SDK.
 
 ### Opsætning
 1. Hent Gemini API-nøgle fra [aistudio.google.com](https://aistudio.google.com)
-2. Start Jarvis — onboarding guider dig gennem rettigheder
+2. Start Ultron — onboarding guider dig gennem rettigheder
 3. Menubar → Settings → indsæt API-nøgle → Save → Test Connection
 4. Giv Mikrofon- og Accessibility-rettigheder når du bliver spurgt
 

@@ -33,7 +33,7 @@ jobs:
       - name: Find DMG
         id: find-dmg
         run: |
-          DMG=$(ls Jarvis-*.dmg | head -1)
+          DMG=$(ls Ultron-*.dmg | head -1)
           echo "dmg=$DMG" >> $GITHUB_OUTPUT
 
       - name: Upload DMG to release

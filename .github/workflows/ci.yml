@@ -21,15 +21,15 @@ jobs:
 
       - name: Resolve SPM packages
         run: |
-          xcodebuild -project Jarvis.xcodeproj \
-            -scheme Jarvis \
+          xcodebuild -project Ultron.xcodeproj \
+            -scheme Ultron \
             -resolvePackageDependencies
 
       - name: Build
         run: |
           xcodebuild \
-            -project Jarvis.xcodeproj \
-            -scheme Jarvis \
+            -project Ultron.xcodeproj \
+            -scheme Ultron \
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath build \
@@ -41,8 +41,8 @@ jobs:
       - name: Test
         run: |
           xcodebuild \
-            -project Jarvis.xcodeproj \
-            -scheme Jarvis \
+            -project Ultron.xcodeproj \
+            -scheme Ultron \
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath build \

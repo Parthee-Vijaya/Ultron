@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-APP_NAME="Jarvis"
-SCHEME="Jarvis"
-PROJECT="Jarvis.xcodeproj"
+APP_NAME="Ultron"
+SCHEME="Ultron"
+PROJECT="Ultron.xcodeproj"
 BUILD_DIR="build"
 # Read the app version straight out of Constants.swift so the DMG name
 # tracks the source of truth without manual bumps.
-APP_VERSION=$(grep -oE 'appVersion = "[^"]+"' Jarvis/Constants.swift | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-DMG_NAME="Jarvis-${APP_VERSION}.dmg"
+APP_VERSION=$(grep -oE 'appVersion = "[^"]+"' Ultron/Constants.swift | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+DMG_NAME="Ultron-${APP_VERSION}.dmg"
 
 echo "=== Building $APP_NAME ==="
 
@@ -54,4 +54,4 @@ echo ""
 echo "=== DMG created: $DMG_NAME ==="
 echo "=== Size: $(du -h "$DMG_NAME" | cut -f1) ==="
 echo ""
-echo "To install: Open $DMG_NAME and drag Jarvis to Applications"
+echo "To install: Open $DMG_NAME and drag Ultron to Applications"
