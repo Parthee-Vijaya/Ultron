@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Generates the Jarvis arc-reactor app icon into the AppIcon.appiconset folder.
+// Generates the Ultron arc-reactor app icon into the AppIcon.appiconset folder.
 // Run via: `swift scripts/generate-icon.swift` from the repo root.
 
 import AppKit
@@ -7,7 +7,7 @@ import CoreGraphics
 
 // MARK: - Config
 
-let outputDir = "Jarvis/Resources/Assets.xcassets/AppIcon.appiconset"
+let outputDir = "Ultron/Resources/Assets.xcassets/AppIcon.appiconset"
 let slots: [(pixel: Int, filename: String)] = [
     (16,   "icon_16.png"),
     (32,   "icon_16@2x.png"),
@@ -21,7 +21,7 @@ let slots: [(pixel: Int, filename: String)] = [
     (1024, "icon_512@2x.png"),
 ]
 
-// Colour palette — matches JarvisTheme.swift
+// Colour palette — matches UltronTheme.swift
 let bgDeep       = NSColor(srgbRed: 0.027, green: 0.055, blue: 0.086, alpha: 1)
 let bgElevated   = NSColor(srgbRed: 0.055, green: 0.102, blue: 0.157, alpha: 1)
 let neonCyan     = NSColor(srgbRed: 0.255, green: 0.941, blue: 0.984, alpha: 1)

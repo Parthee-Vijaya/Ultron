@@ -1,5 +1,5 @@
 #!/bin/bash
-# v1.2.0 — notarization wrapper for Jarvis DMGs.
+# v1.2.0 — notarization wrapper for Ultron DMGs.
 #
 # Required environment:
 #   APPLE_ID            — Apple ID email used for notarization
@@ -18,9 +18,9 @@
 
 set -e
 
-DMG=$(ls Jarvis-*.dmg | head -1)
+DMG=$(ls Ultron-*.dmg | head -1)
 if [ -z "$DMG" ]; then
-  echo "ERROR: No Jarvis-*.dmg found in working directory"
+  echo "ERROR: No Ultron-*.dmg found in working directory"
   exit 1
 fi
 
