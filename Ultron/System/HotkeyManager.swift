@@ -26,6 +26,7 @@ final class HotkeyManager {
     var onSummarize: (() -> Void)?
     var onInfoMode: (() -> Void)?
     var onAgent: (() -> Void)?
+    var onGenerateDigest: (() -> Void)?
 
     /// Install all bindings. Call once at app start after loading from `HotkeyStore`.
     func register(bindings: [HotkeyAction: HotkeyBinding]) {
@@ -95,6 +96,8 @@ final class HotkeyManager {
             hotKey.keyDownHandler = { [weak self] in self?.onInfoMode?() }
         case .agent:
             hotKey.keyDownHandler = { [weak self] in self?.onAgent?() }
+        case .generateDigest:
+            hotKey.keyDownHandler = { [weak self] in self?.onGenerateDigest?() }
         }
     }
 }

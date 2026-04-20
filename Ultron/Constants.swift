@@ -110,6 +110,12 @@ enum Constants {
         /// v1.5 Phase 3a: which local Ollama model to use when a Mode's
         /// provider is `.ollama`. User picks from probed tags in Settings.
         static let agentOllamaModel = "agentOllamaModel"
+        /// v1.5 Phase 4c: scheduler that auto-regenerates the AI briefing
+        /// once a day at briefingScheduleHour:briefingScheduleMinute. Off
+        /// by default — requires notification permission on first enable.
+        static let briefingScheduleEnabled = "briefingScheduleEnabled"
+        static let briefingScheduleHour = "briefingScheduleHour"
+        static let briefingScheduleMinute = "briefingScheduleMinute"
         static let agentWorkspaceRoots = "agentWorkspaceRoots"
         /// v1.1.7: newline-separated list of additional program names the user
         /// trusts for `run_shell` beyond the built-in defaults.
