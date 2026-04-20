@@ -65,7 +65,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let textInsertion = TextInsertionService()
     private let permissions = PermissionsManager()
     private let screenCapture = ScreenCaptureService()
-    private let ttsService = TTSService()
+    /// Exposed (not private) so UI views like the Cockpit briefing tile can
+    /// call `speakAlways(...)` for "Læs op"-style playback. Recording pipeline
+    /// is still the main consumer.
+    let ttsService = TTSService()
     private lazy var geminiClient = GeminiClient(keychainService: keychainService, usageTracker: usageTracker)
 
     // MARK: - App Lifecycle

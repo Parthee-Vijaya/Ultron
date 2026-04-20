@@ -2121,7 +2121,10 @@ struct InfoModeView: View {
     /// user always sees something actionable. Regenerate button triggers a
     /// background LLM call via the ProviderRouter (respects local-first
     /// routing) + persists via the sidecar so next launch hydrates without
-    /// another round-trip.
+    /// another round-trip. "Læs op"-knappen bruger AVSpeechSynthesizer til
+    /// at fortælle briefingen på dansk.
+    @State private var isSpeakingBriefing = false
+
     @ViewBuilder
     private var briefingTile: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2159,6 +2162,16 @@ struct InfoModeView: View {
             if service.isDigestGenerating {
                 ProgressView().controlSize(.small)
             }
+            if let cached = service.cachedDigest {
+                Button {
+                    toggleSpeakBriefing(text: cached.text)
+                } label: {
+                    Label(isSpeakingBriefing ? "Stop" : "Læs op",
+                          systemImage: isSpeakingBriefing ? "stop.fill" : "speaker.wave.2")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
             Button {
                 Task { await service.regenerateDigest() }
             } label: {
@@ -2176,6 +2189,40 @@ struct InfoModeView: View {
             }
             .buttonStyle(.borderless)
         }
+    }
+
+    /// Start or stop TTS playback of the briefing. Uses `speakAlways` so it
+    /// ignores the global TTS toggle (the user is explicitly asking for audio
+    /// output by tapping this button). Simple heuristic: language is "da-DK"
+    /// if the text contains common Danish markers, else "en-US". Keeps the
+    /// synthesizer from reading Danish with an American voice.
+    private func toggleSpeakBriefing(text: String) {
+        guard let tts = (NSApp.delegate as? AppDelegate)?.ttsService else { return }
+        if isSpeakingBriefing {
+            tts.stop()
+            isSpeakingBriefing = false
+            return
+        }
+        let language = detectLanguage(text: text)
+        tts.speakAlways(text, language: language)
+        isSpeakingBriefing = true
+        // AVSpeechSynthesizer doesn't expose a "finished" observable on this
+        // simple wrapper; guess the duration from the character count (avg 12
+        // chars/sec for Danish TTS at default rate) so the UI flips back to
+        // "Læs op" without needing delegate plumbing. If the user manually
+        // stops via the button we clear early anyway.
+        let estSeconds = Double(text.count) / 12.0
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(estSeconds))
+            isSpeakingBriefing = false
+        }
+    }
+
+    private func detectLanguage(text: String) -> String {
+        let lower = text.lowercased()
+        let danishHits = ["ø", "æ", "å", " er ", " og ", " for ", " ikke "]
+            .reduce(0) { $0 + (lower.contains($1) ? 1 : 0) }
+        return danishHits >= 2 ? "da-DK" : "en-US"
     }
 
     private var briefingTitle: String {
