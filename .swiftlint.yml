@@ -1,17 +1,17 @@
-# SwiftLint config for Jarvis. Opinionated but not punitive.
+# SwiftLint config for Ultron. Opinionated but not punitive.
 # Goal: catch real smells, ignore style-bike-shedding (line length fights are
 # already lost in a SwiftUI view). Tighten over time as the codebase cleans up.
 
 included:
-  - Jarvis
-  - JarvisTests
+  - Ultron
+  - UltronTests
 
 excluded:
   - build
   - build-debug
   - .build
   - scripts
-  - Jarvis.xcodeproj
+  - Ultron.xcodeproj
 
 disabled_rules:
   - line_length               # SwiftUI views + multi-line string literals
