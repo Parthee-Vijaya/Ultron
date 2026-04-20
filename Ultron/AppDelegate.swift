@@ -295,7 +295,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             screenCapture: screenCapture,
             summaryService: summaryService,
             chatSession: chatSession,
-            instantAnswers: InstantAnswerProvider(infoModeService: infoModeService)
+            instantAnswers: InstantAnswerProvider(infoModeService: infoModeService),
+            infoModeService: infoModeService
         )
         commandRouter = router
         hudController.commandRouter = router
