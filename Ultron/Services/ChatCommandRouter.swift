@@ -189,7 +189,7 @@ final class ChatCommandRouter {
     private func modelIdFor(provider: AIProviderType) -> String {
         switch provider {
         case .ollama:
-            return UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel) ?? "llama3.2:latest"
+            return UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel) ?? "gemma3:4b"
         case .anthropic:
             return UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel) ?? "claude-sonnet-4-6"
         case .gemini:
