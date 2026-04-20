@@ -37,7 +37,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// conversation. Kept as a computed alias so legacy call sites still
     /// resolve without edits.
     /// v1.1.5: agent mode now uses the shared `chatSession` directly.
-    private var agentChatPipeline: AgentChatPipeline?
+    /// One pipeline per AI provider type so switching a mode between Claude
+    /// and Ollama doesn't destroy the other's conversation buffer. Lazy —
+    /// pipelines are built on first use.
+    private var agentChatPipelines: [AIProviderType: AgentChatPipeline] = [:]
     private var commandRouter: ChatCommandRouter?
     /// Shared buffer for the chat command-bar text field. Lets
     /// `handleChatVoiceToggle` push dictation transcripts back into the UI.
@@ -273,13 +276,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Agent chat — lazily instantiated on first ⌥⇧A press so users who
         // never use it don't pay the Anthropic provider init cost.
         hudController.onAgentChatSend = { [weak self] text in
-            self?.ensureAgentChatPipeline().sendTextMessage(text)
+            self?.ensureAgentChatPipeline(for: .anthropic)?.sendTextMessage(text)
         }
         hudController.onAgentApprove = { [weak self] in
-            self?.ensureAgentChatPipeline().approvePendingConfirmation()
+            self?.ensureAgentChatPipeline(for: .anthropic)?.approvePendingConfirmation()
         }
         hudController.onAgentReject = { [weak self] in
-            self?.ensureAgentChatPipeline().rejectPendingConfirmation()
+            self?.ensureAgentChatPipeline(for: .anthropic)?.rejectPendingConfirmation()
         }
 
         // β.11: unified command router — chat window uses this to dispatch
@@ -287,7 +290,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // thread, keeping direct hotkey invocations unchanged.
         let router = ChatCommandRouter(
             chatPipeline: chatPipeline,
-            agentChatPipeline: { [weak self] in self?.ensureAgentChatPipeline() },
+            agentChatPipeline: { [weak self] providerType in self?.ensureAgentChatPipeline(for: providerType) },
             geminiClient: geminiClient,
             screenCapture: screenCapture,
             summaryService: summaryService,
@@ -521,20 +524,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Returns the agent pipeline, instantiating it on first use. Reads the
-    /// user's preferred Claude model from UserDefaults so Settings updates
-    /// can take effect on the next run.
-    private func ensureAgentChatPipeline() -> AgentChatPipeline {
-        if let pipeline = agentChatPipeline { return pipeline }
-        let provider = AnthropicProvider(keychain: keychainService)
-        let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel)
-            ?? "claude-sonnet-4-6"
-        let pipeline = AgentChatPipeline(
-            provider: provider,
-            chatSession: chatSession,
-            modelID: modelID
-        )
-        agentChatPipeline = pipeline
+    /// Returns the agent pipeline for a given provider type, instantiating it
+    /// on first use. Cached in `agentChatPipelines` keyed by type so switching
+    /// modes doesn't rebuild the pipeline on every send.
+    ///
+    /// Reads the user's preferred model from UserDefaults so Settings updates
+    /// can take effect on the next run:
+    ///   - Anthropic: Constants.Defaults.agentClaudeModel (default claude-sonnet-4-6)
+    ///   - Ollama:    Constants.Defaults.agentOllamaModel (default llama3.2:latest)
+    ///
+    /// Returns nil only when the provider type isn't yet supported.
+    private func ensureAgentChatPipeline(for providerType: AIProviderType) -> AgentChatPipeline? {
+        if let pipeline = agentChatPipelines[providerType] { return pipeline }
+
+        let pipeline: AgentChatPipeline
+        switch providerType {
+        case .anthropic:
+            let provider = AnthropicProvider(keychain: keychainService)
+            let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel)
+                ?? "claude-sonnet-4-6"
+            pipeline = AgentChatPipeline(provider: provider, chatSession: chatSession, modelID: modelID)
+        case .ollama:
+            let provider = OllamaProvider()
+            let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
+                ?? "llama3.2:latest"
+            pipeline = AgentChatPipeline(provider: provider, chatSession: chatSession, modelID: modelID)
+        case .gemini:
+            // Gemini routes through ChatPipeline (non-agent), not this one.
+            return nil
+        }
+
+        agentChatPipelines[providerType] = pipeline
         return pipeline
     }
 

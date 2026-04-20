@@ -22,7 +22,7 @@ struct PendingToolCall: Sendable, Equatable {
 
 @MainActor
 final class AgentService {
-    private let provider: AnthropicProvider
+    private let provider: AIProvider
     private let registry: AgentToolRegistry
     private let auditLog = AgentAuditLog()
     private let maxIterations = 20
@@ -35,7 +35,7 @@ final class AgentService {
     /// Default system prompt — narrow scope, demand citation of file paths when
     /// the agent draws conclusions from file contents.
     static let defaultSystemPrompt = """
-    You are J.A.R.V.I.S acting as a file-system agent on the user's macOS machine.
+    You are U.L.T.R.O.N acting as a file-system agent on the user's macOS machine.
 
     You have access to a small set of READ-ONLY tools to inspect files and
     directories inside a user-approved workspace. You cannot yet modify, delete
@@ -67,7 +67,7 @@ final class AgentService {
         let durationMs: Int
     }
 
-    init(provider: AnthropicProvider, registry: AgentToolRegistry = .shared) {
+    init(provider: AIProvider, registry: AgentToolRegistry = .shared) {
         self.provider = provider
         self.registry = registry
     }

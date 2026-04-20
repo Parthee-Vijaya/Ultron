@@ -28,7 +28,9 @@ final class ChatCommandRouter {
     }
 
     private let chatPipeline: ChatPipeline
-    private let agentChatPipeline: () -> AgentChatPipeline?
+    /// Factory keyed by provider type — Anthropic vs Ollama pipelines share
+    /// the AgentChatPipeline class but get different AIProvider backings.
+    private let agentChatPipeline: (AIProviderType) -> AgentChatPipeline?
     private let geminiClient: GeminiClient
     private let screenCapture: ScreenCaptureService
     private let summaryService: DocumentSummaryService
@@ -41,7 +43,7 @@ final class ChatCommandRouter {
 
     init(
         chatPipeline: ChatPipeline,
-        agentChatPipeline: @escaping () -> AgentChatPipeline?,
+        agentChatPipeline: @escaping (AIProviderType) -> AgentChatPipeline?,
         geminiClient: GeminiClient,
         screenCapture: ScreenCaptureService,
         summaryService: DocumentSummaryService,
@@ -144,8 +146,10 @@ final class ChatCommandRouter {
             return
         }
 
-        if mode.provider == .anthropic, mode.agentTools,
-           let agent = agentChatPipeline() {
+        // Providers that go through the agent pipeline (Anthropic + Ollama).
+        // Gemini routes through ChatPipeline below.
+        if mode.provider != .gemini, mode.agentTools,
+           let agent = agentChatPipeline(mode.provider) {
             agent.sendTextMessage(input)
         } else {
             // Gemini path — reuses ChatPipeline but with the picked mode's
@@ -322,8 +326,8 @@ final class ChatCommandRouter {
     }
 
     private func retryText(message: ChatMessage, mode: Mode, prompt: String) async {
-        let pipeline = (mode.provider == .anthropic && mode.agentTools)
-            ? agentChatPipeline()
+        let pipeline = (mode.provider != .gemini && mode.agentTools)
+            ? agentChatPipeline(mode.provider)
             : nil
 
         if let agent = pipeline {
