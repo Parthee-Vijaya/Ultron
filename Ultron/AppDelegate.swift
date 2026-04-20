@@ -655,6 +655,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         uptodateItem.keyEquivalentModifierMask = [.option]
         statusMenu.addItem(uptodateItem)
 
+        // Phase 4c: AI-briefing regeneration shortcut. Uses ⌥⇧D by default,
+        // same binding as the `.generateDigest` hotkey action so the menu
+        // item label reflects the user's current shortcut.
+        let digestItem = NSMenuItem(title: "Generer AI-briefing", action: #selector(generateDigestFromMenu), keyEquivalent: "d")
+        digestItem.target = self
+        digestItem.keyEquivalentModifierMask = [.option, .shift]
+        statusMenu.addItem(digestItem)
+
         // Hotkey cheat sheet submenu
         let shortcutsItem = NSMenuItem(title: "Hurtig-genveje", action: nil, keyEquivalent: "")
         shortcutsItem.submenu = buildShortcutsSubmenu()
@@ -785,6 +793,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             hudController.showUptodate()
         }
+    }
+
+    @objc private func generateDigestFromMenu() {
+        runBriefingGeneration(openCockpit: true)
     }
 
     private func presentSettings(tab: SettingsTab?) {
@@ -923,7 +935,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        hotkeyManager.onGenerateDigest = { [weak self] in
+            self?.runBriefingGeneration(openCockpit: true)
+        }
+
         // Registration happens after this, via `hotkeyBindings.applyAll()` in applicationDidFinishLaunching.
+    }
+
+    /// Phase 4c single-entry-point for triggering an AI-briefing regeneration.
+    /// Called from the ⌥⇧D hotkey, the "Ultron digest" voice command, and
+    /// the menu bar's "Generer briefing" item. Optionally pops the Cockpit
+    /// so the user sees the tile update.
+    @MainActor
+    private func runBriefingGeneration(openCockpit: Bool) {
+        if openCockpit, !hudController.isInfoModeVisible {
+            hudController.showInfoMode()
+        }
+        Task { [weak self] in
+            await self?.infoModeService.regenerateDigest()
+        }
     }
 
     // MARK: - Cost Warning
@@ -976,6 +1006,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.runVoiceRecording(mode: BuiltInModes.translate)
             case .summarize:
                 self.summaryService.summarizeInteractively()
+            case .digest:
+                self.runBriefingGeneration(openCockpit: true)
             }
         }
 
