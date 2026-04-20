@@ -71,6 +71,12 @@ struct InfoModeView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+
+                // Phase 4c: bottom briefing tile — raw Cockpit snapshot in
+                // digest form, with a one-click "Åbn i chat" that pre-fills
+                // the `/digest` command for LLM synthesis.
+                briefingTile
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -2106,5 +2112,53 @@ struct InfoModeView: View {
         if seconds < 60 { return "\(seconds)s" }
         if seconds < 3600 { return "\(seconds / 60)m" }
         return "\(seconds / 3600)t"
+    }
+
+    // MARK: - Phase 4c briefing tile
+
+    /// Bottom Cockpit tile that renders the same text `/digest` feeds to the
+    /// LLM, so the user can eyeball the context before committing to an AI
+    /// round-trip. "Åbn i chat" pre-fills `/digest` via the ultron:// URL
+    /// scheme, which AppDelegate's handler drops into the chat command bar.
+    @ViewBuilder
+    private var briefingTile: some View {
+        let context = service.digestContext()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Briefing-kladde", systemImage: "newspaper")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    let url = URL(string: "ultron://chat?prompt=/digest")!
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Label("Åbn i chat som /digest", systemImage: "arrowshape.turn.up.right")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                Button {
+                    Task { await service.refresh() }
+                } label: {
+                    Label("Opdater", systemImage: "arrow.clockwise")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+            Text(context)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.primary.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(0.18))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
     }
 }
