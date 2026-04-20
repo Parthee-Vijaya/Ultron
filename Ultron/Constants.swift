@@ -116,6 +116,10 @@ enum Constants {
         static let briefingScheduleEnabled = "briefingScheduleEnabled"
         static let briefingScheduleHour = "briefingScheduleHour"
         static let briefingScheduleMinute = "briefingScheduleMinute"
+        /// v1.5 phase 4 polish: when true the clipboard history service
+        /// stops recording new clips. Useful for sensitive-input windows
+        /// (password managers, payment forms).
+        static let clipboardHistoryPaused = "clipboardHistoryPaused"
         static let agentWorkspaceRoots = "agentWorkspaceRoots"
         /// v1.1.7: newline-separated list of additional program names the user
         /// trusts for `run_shell` beyond the built-in defaults.

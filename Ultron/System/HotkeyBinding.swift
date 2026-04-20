@@ -17,6 +17,8 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     /// v1.5 Phase 4c: trigger AI-briefing regeneration from anywhere.
     /// Equivalent to tapping "Regenerer" in the Cockpit briefing tile.
     case generateDigest
+    /// v1.5 phase 4 polish: open the clipboard history panel (⌥⇧V).
+    case clipboardHistory
 
     var id: String { rawValue }
 
@@ -33,7 +35,8 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
         case .summarize:       return "Summarize dokument"
         case .infoMode:        return "Cockpit (vejr + system)"
         case .agent:           return "Agent (filoperationer via Claude)"
-        case .generateDigest:  return "Generer AI-briefing"
+        case .generateDigest:    return "Generer AI-briefing"
+        case .clipboardHistory:  return "Udklipsholder-historik"
         }
     }
 
@@ -41,7 +44,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     var isPushToTalk: Bool {
         switch self {
         case .dictation, .qna, .vision, .translate: return true
-        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent, .generateDigest: return false
+        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent, .generateDigest, .clipboardHistory: return false
         }
     }
 
@@ -68,6 +71,9 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
         case .generateDigest:
             let flags: NSEvent.ModifierFlags = [.option, .shift]
             return HotkeyBinding(action: self, keyCode: Key.d.carbonKeyCode, modifiersRaw: flags.rawValue)
+        case .clipboardHistory:
+            let flags: NSEvent.ModifierFlags = [.option, .shift]
+            return HotkeyBinding(action: self, keyCode: Key.v.carbonKeyCode, modifiersRaw: flags.rawValue)
         }
     }
 }

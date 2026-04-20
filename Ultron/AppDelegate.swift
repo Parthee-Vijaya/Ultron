@@ -53,6 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
     let briefingScheduler = BriefingScheduler()
+    let clipboardHistory = ClipboardHistoryService()
+    private var clipboardHistoryWindow: NSWindow?
     lazy var errorPresenter = ErrorPresenter(hudController: hudController)
     private lazy var summaryService = DocumentSummaryService(
         geminiClient: geminiClient,
@@ -121,6 +123,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return self.infoModeService.cachedDigest?.text
             }
             briefingScheduler.start()
+            // Phase 4 polish: start the clipboard history watcher. Memory-only,
+            // no disk persistence. Users can pause from the panel.
+            clipboardHistory.start()
             // v1.4 Fase 4 slice: register ourselves as a services-menu
             // provider so "Ask Ultron about this" appears in every app's
             // Services submenu for selected text. The Info.plist NSServices
@@ -676,6 +681,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         digestItem.keyEquivalentModifierMask = [.option, .shift]
         statusMenu.addItem(digestItem)
 
+        let clipboardItem = NSMenuItem(title: "Udklipsholder-historik", action: #selector(openClipboardHistory), keyEquivalent: "v")
+        clipboardItem.target = self
+        clipboardItem.keyEquivalentModifierMask = [.option, .shift]
+        statusMenu.addItem(clipboardItem)
+
         // Hotkey cheat sheet submenu
         let shortcutsItem = NSMenuItem(title: "Hurtig-genveje", action: nil, keyEquivalent: "")
         shortcutsItem.submenu = buildShortcutsSubmenu()
@@ -810,6 +820,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func generateDigestFromMenu() {
         runBriefingGeneration(openCockpit: true)
+    }
+
+    /// Open the clipboard-history panel or bring it to the front when
+    /// already showing. Pattern mirrors `openCheatSheet` — a titled window
+    /// managed separately from the HUD so the clipboard content stays
+    /// out of the always-on-top corner flow.
+    @objc func openClipboardHistory() {
+        if let window = clipboardHistoryWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = ClipboardHistoryView(
+            service: clipboardHistory,
+            onClose: { [weak self] in self?.clipboardHistoryWindow?.close() },
+            onCopy: { [weak self] entry in
+                self?.clipboardHistory.recopy(entry)
+                self?.clipboardHistoryWindow?.close()
+            }
+        )
+        let host = NSHostingController(rootView: view)
+        host.sizingOptions = .preferredContentSize
+        let window = NSWindow(contentViewController: host)
+        window.title = "Udklipsholder-historik"
+        window.styleMask = [.titled, .closable, .resizable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        clipboardHistoryWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func presentSettings(tab: SettingsTab?) {
@@ -950,6 +990,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         hotkeyManager.onGenerateDigest = { [weak self] in
             self?.runBriefingGeneration(openCockpit: true)
+        }
+
+        hotkeyManager.onClipboardHistory = { [weak self] in
+            self?.openClipboardHistory()
         }
 
         // Registration happens after this, via `hotkeyBindings.applyAll()` in applicationDidFinishLaunching.
