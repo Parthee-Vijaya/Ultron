@@ -7,6 +7,9 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
     case gemini
     case anthropic
     case ollama
+    /// Phase 3d: let the `ProviderRouter` pick at call time based on
+    /// RoutingPolicy (battery, modality, task complexity, user history).
+    case auto
 
     var id: String { rawValue }
 
@@ -15,6 +18,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         case .gemini: return "Google Gemini"
         case .anthropic: return "Anthropic Claude"
         case .ollama: return "Ollama (lokal)"
+        case .auto: return "Auto (local-first)"
         }
     }
 
@@ -24,6 +28,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .gemini, .anthropic: return false
         case .ollama: return true
+        case .auto: return false  // router decides per call
         }
     }
 }
