@@ -869,6 +869,23 @@ final class InfoModeService {
         }
     }
 
+    /// Phase 4c: persist a digest that was generated OUTSIDE of
+    /// `regenerateDigest()` (e.g. the chat's `/digest` command streamed an
+    /// answer into ChatSession). Updates `cachedDigest` so the Cockpit tile
+    /// reflects the fresh briefing without the user also clicking Regenerer.
+    func persistExternalDigest(text: String, model: String) async {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let digest = CachedDigest(
+            text: clean,
+            generatedAt: Date(),
+            sources: inferSources(),
+            model: model
+        )
+        cachedDigest = digest
+        await persistDigest(digest)
+    }
+
     /// Persist via sidecar. Failure is logged but doesn't propagate — the
     /// in-memory `cachedDigest` is still good for this session.
     private func persistDigest(_ digest: CachedDigest) async {
