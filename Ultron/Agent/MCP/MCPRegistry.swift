@@ -73,23 +73,44 @@ final class MCPRegistry {
     /// Entry point called from `AppDelegate.applicationDidFinishLaunching`.
     /// Reads config, spawns servers, registers tools. Idempotent — safe to
     /// call multiple times (re-registers tools but leaves running servers).
+    ///
+    /// Config assembly order:
+    /// 1. Built-in `ultron` sidecar entry from `BuiltInSidecar.builtInServer()`
+    ///    — auto-registered so users don't have to hand-edit mcp.json.
+    /// 2. User-configured servers from `~/.ultron/mcp.json` — wins on name
+    ///    collision so the user can override (different uv, disable by
+    ///    pointing at /usr/bin/true, etc.).
     func bootstrap() async {
-        let config: MCPConfig
-        do {
-            config = try Self.loadConfig()
-        } catch let error as NSError where error.code == NSFileReadNoSuchFileError {
-            // No config = no MCP servers. Not an error.
-            return
-        } catch {
-            LoggingService.shared.log("Failed to read mcp.json: \(error)", level: .warning)
-            return
+        var servers: [String: MCPConfig.Server] = [:]
+
+        if let builtIn = BuiltInSidecar.builtInServer() {
+            servers["ultron"] = builtIn
+            LoggingService.shared.log("MCP built-in sidecar auto-registered: \(builtIn.command)")
+        } else {
+            LoggingService.shared.log(
+                "MCP built-in sidecar skipped: \(BuiltInSidecar.resolved.diagnostic)",
+                level: .warning
+            )
         }
 
-        serverConfigs = config.servers
+        do {
+            let userConfig = try Self.loadConfig()
+            for (name, server) in userConfig.servers {
+                servers[name] = server
+            }
+        } catch let error as NSError where error.code == NSFileReadNoSuchFileError {
+            // No user config is normal on first launch.
+        } catch {
+            LoggingService.shared.log("Failed to read mcp.json: \(error)", level: .warning)
+        }
+
+        guard !servers.isEmpty else { return }
+
+        serverConfigs = servers
         // Seed the observable state with a .starting entry for each server so
         // the UI shows a yellow chip immediately, before the async spawn even
         // begins.
-        for (name, server) in config.servers {
+        for (name, server) in servers {
             state.upsert(MCPServerStatus(
                 name: name,
                 command: server.command,
@@ -98,7 +119,7 @@ final class MCPRegistry {
                 state: .starting
             ))
         }
-        for (name, server) in config.servers {
+        for (name, server) in servers {
             await startServer(name: name, server: server)
         }
     }

@@ -2,7 +2,7 @@ import AppKit
 import Carbon
 import HotKey
 
-/// The six hotkey-triggered actions Ultron supports.
+/// The hotkey-triggered actions Ultron supports.
 enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     case dictation
     case qna
@@ -14,22 +14,26 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     case summarize
     case infoMode
     case agent
+    /// v1.5 Phase 4c: trigger AI-briefing regeneration from anywhere.
+    /// Equivalent to tapping "Regenerer" in the Cockpit briefing tile.
+    case generateDigest
 
     var id: String { rawValue }
 
     /// Human-readable label shown in Settings.
     var displayName: String {
         switch self {
-        case .dictation:   return "Dictation (push-to-talk)"
-        case .qna:         return "Q&A"
-        case .vision:      return "Vision (screenshot + voice)"
-        case .translate:   return "Translate"
-        case .cycleMode:   return "Cycle active mode"
-        case .toggleChat:  return "Toggle chat window"
-        case .uptodate:    return "Briefing (nyheder + historie)"
-        case .summarize:   return "Summarize dokument"
-        case .infoMode:    return "Cockpit (vejr + system)"
-        case .agent:       return "Agent (filoperationer via Claude)"
+        case .dictation:       return "Dictation (push-to-talk)"
+        case .qna:             return "Q&A"
+        case .vision:          return "Vision (screenshot + voice)"
+        case .translate:       return "Translate"
+        case .cycleMode:       return "Cycle active mode"
+        case .toggleChat:      return "Toggle chat window"
+        case .uptodate:        return "Briefing (nyheder + historie)"
+        case .summarize:       return "Summarize dokument"
+        case .infoMode:        return "Cockpit (vejr + system)"
+        case .agent:           return "Agent (filoperationer via Claude)"
+        case .generateDigest:  return "Generer AI-briefing"
         }
     }
 
@@ -37,7 +41,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     var isPushToTalk: Bool {
         switch self {
         case .dictation, .qna, .vision, .translate: return true
-        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent: return false
+        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent, .generateDigest: return false
         }
     }
 
@@ -61,6 +65,9 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
         case .agent:
             let flags: NSEvent.ModifierFlags = [.option, .shift]
             return HotkeyBinding(action: self, keyCode: Key.a.carbonKeyCode, modifiersRaw: flags.rawValue)
+        case .generateDigest:
+            let flags: NSEvent.ModifierFlags = [.option, .shift]
+            return HotkeyBinding(action: self, keyCode: Key.d.carbonKeyCode, modifiersRaw: flags.rawValue)
         }
     }
 }

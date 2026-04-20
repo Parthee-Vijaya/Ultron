@@ -57,6 +57,10 @@ final class InfoModeService {
     private(set) var cachedDigest: CachedDigest?
     private(set) var isDigestGenerating = false
     private(set) var digestError: String?
+    /// Past digests (excluding the current one). Hydrated on launch + after
+    /// every regenerate. Used by the briefing tile to show "yesterday" /
+    /// "2 days ago" at a glance without opening a separate view.
+    private(set) var digestHistory: [CachedDigest] = []
 
     struct CachedDigest: Equatable {
         let text: String
@@ -806,8 +810,55 @@ final class InfoModeService {
                 return
             }
             cachedDigest = try parseCachedDigest(from: raw)
+            // Also load the recent history so the tile's "Tidligere briefinger"
+            // disclosure has data without a second user interaction.
+            await loadDigestHistory()
         } catch {
             LoggingService.shared.log("loadCachedDigest failed: \(error.localizedDescription)", level: .warning)
+        }
+    }
+
+    /// Pull the last N digests from the sidecar (`ultron__digest.history`).
+    /// Drops the most recent one (that's `cachedDigest`) so the UI doesn't
+    /// render it twice.
+    func loadDigestHistory(limit: Int = 7) async {
+        guard let tool = AgentToolRegistry.shared.tool(named: "ultron__digest.history") else {
+            return
+        }
+        do {
+            let context = AgentContext(
+                allowedRoots: AgentContext.defaultAllowedRoots(),
+                audit: AgentAuditLog()
+            )
+            let raw = try await tool.execute(["limit": limit], context)
+            guard let data = raw.data(using: .utf8),
+                  let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                digestHistory = []
+                return
+            }
+            let parsed: [CachedDigest] = array.compactMap { dict in
+                let text = (dict["text"] as? String) ?? ""
+                guard !text.isEmpty else { return nil }
+                let model = (dict["model"] as? String) ?? "unknown"
+                let sources = (dict["sources"] as? [String]) ?? []
+                let generatedAt: Date = {
+                    if let iso = dict["generated_at"] as? String,
+                       let date = ISO8601DateFormatter.withFractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) {
+                        return date
+                    }
+                    return Date()
+                }()
+                return CachedDigest(text: text, generatedAt: generatedAt, sources: sources, model: model)
+            }
+            // Drop the entry that matches cachedDigest (same timestamp) so we
+            // don't render the current briefing in the "past" list.
+            if let current = cachedDigest {
+                digestHistory = parsed.filter { abs($0.generatedAt.timeIntervalSince(current.generatedAt)) > 1 }
+            } else {
+                digestHistory = parsed
+            }
+        } catch {
+            LoggingService.shared.log("loadDigestHistory failed: \(error.localizedDescription)", level: .warning)
         }
     }
 
@@ -863,10 +914,29 @@ final class InfoModeService {
             )
             cachedDigest = digest
             await persistDigest(digest)
+            await loadDigestHistory()  // refresh after new entry lands
         } catch {
             digestError = error.localizedDescription
             LoggingService.shared.log("regenerateDigest failed: \(error.localizedDescription)", level: .warning)
         }
+    }
+
+    /// Phase 4c: persist a digest that was generated OUTSIDE of
+    /// `regenerateDigest()` (e.g. the chat's `/digest` command streamed an
+    /// answer into ChatSession). Updates `cachedDigest` so the Cockpit tile
+    /// reflects the fresh briefing without the user also clicking Regenerer.
+    func persistExternalDigest(text: String, model: String) async {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let digest = CachedDigest(
+            text: clean,
+            generatedAt: Date(),
+            sources: inferSources(),
+            model: model
+        )
+        cachedDigest = digest
+        await persistDigest(digest)
+        await loadDigestHistory()
     }
 
     /// Persist via sidecar. Failure is logged but doesn't propagate — the

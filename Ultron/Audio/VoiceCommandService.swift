@@ -22,6 +22,8 @@ final class VoiceCommandService {
         case qna
         case translate
         case summarize
+        /// v1.5 Phase 4c: trigger AI-briefing regeneration.
+        case digest
     }
 
     var onCommand: ((Command) -> Void)?
@@ -179,6 +181,9 @@ final class VoiceCommandService {
              tail.hasPrefix("translate"):                command = .translate
         case tail.hasPrefix("opsummer"),
              tail.hasPrefix("summarize"):                command = .summarize
+        case tail.hasPrefix("digest"),
+             tail.hasPrefix("opsamling"),
+             tail.hasPrefix("morgenbriefing"):           command = .digest
         default:                                          command = nil
         }
 

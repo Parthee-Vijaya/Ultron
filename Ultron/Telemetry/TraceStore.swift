@@ -130,6 +130,17 @@ final class TraceStore {
         }
     }
 
+    /// Delete every trace entry. Mostly for the "reset routing weights"
+    /// flow in Settings → Læringsspor when the user wants the rating loop
+    /// to start fresh. Rotated archive (.1.jsonl) is also removed.
+    func clearAll() {
+        writeQueue.async { [fileURL] in
+            let archive = fileURL.deletingPathExtension().appendingPathExtension("1.jsonl")
+            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: archive)
+        }
+    }
+
     private static func rotateIfNeeded(url: URL) {
         let fm = FileManager.default
         guard let attrs = try? fm.attributesOfItem(atPath: url.path),
