@@ -64,6 +64,16 @@ struct SettingsTracesPane: View {
             Spacer()
             Button("Genindlæs") { reload() }
                 .controlSize(.small)
+            Button(role: .destructive) {
+                TraceStore.shared.clearAll()
+                // Clear local view immediately; file delete runs async.
+                entries = []
+                refreshToken = UUID()
+            } label: {
+                Text("Slet alle")
+            }
+            .controlSize(.small)
+            .disabled(entries.isEmpty)
         }
     }
 
