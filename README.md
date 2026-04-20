@@ -1,247 +1,204 @@
-# Jarvis — AI Voice Assistant for macOS
+# Ultron — The Ultimate Jarvis
 
-A native macOS menu-bar app that turns your voice into action using Google Gemini + Anthropic Claude. Hold a hotkey and speak for dictation, ask questions, analyze your screen, chat with history, or open the **Cockpit** — a glanceable dashboard of weather, traffic, system stats, Tesla routes, aircraft overhead, and Claude Code usage.
+> A native macOS AI assistant that combines the polished voice + HUD experience of **[JarvisHUD](https://github.com/Parthee-Vijaya/JarvisHUD)** with the skills, connectors, and local-first inference of **[OpenJarvis](https://github.com/open-jarvis/OpenJarvis)**.
 
-![Cockpit panel](docs/screenshots/cockpit.png)
+Ultron is a single-user macOS menu-bar app that:
+- Answers **locally** when it can (Ollama / MLX), falls back to cloud (Gemini / Claude) only when model capability requires it.
+- Extends its own tool-repertoire automatically when new OpenJarvis skills are installed.
+- Shows you **why** each decision was made — every LLM call is traced with provider, model, tokens, latency, and an energy estimate.
 
-## Highlights
+Status: **pre-alpha**, Phase 1 just started. See the [roadmap](#roadmap) below.
 
-- **Voice modes** — dictation, Q&A, vision, VibeCode, professional rewrite. Push-to-talk with global hotkeys, local Whisper large-v3 for dictation, Gemini-audio for Q&A/Vision.
-- **Chat** — full conversation history with streaming replies, agent mode with tool-call cards, drag-and-drop image attachments, semantic search, Spotlight indexing.
-- **Cockpit** — a 960pt dashboard tile grid: Vejr, Sol (with solstice delta + next Danish holiday), Luft/Måne, Nyheder, Trafikinfo (live Vejdirektoratet feed), Hjem/Rute commute with zoomable MapKit + EV charger overlay, System & Netværk 2×2 quadrant, Fly over dig (live ADS-B), Himmel (planet ephemeris + ISS), Claude Code stats split across Sessioner/Tokens + Projekter/Modeller.
-- **Briefing** — 6-source news (DR, Politiken, BBC, Guardian, Reddit, Hacker News) + Denne dag i historien.
-- **Agent mode** — tool-using chat with file system, code execution, web search, MCP servers.
+---
 
-## Voice Modes
+## Why this project exists
 
-| Mode | Hotkey | What it does | Output |
-|------|--------|-------------|--------|
-| **Dictation** | `⌥ Space` | Transcribes speech (local WhisperKit) to clean text | Paste at cursor + clipboard + Notes.app note |
-| **VibeCode** | `⌥ Space` | Converts spoken ideas into structured AI coding prompts | Paste at cursor |
-| **Professional** | `⌥ Space` | Rewrites dictation for professional communication | Paste at cursor |
-| **Q&A** | `⌥ Q` | Grounded question answering with Gemini + web search + citation chips | Floating HUD |
-| **Vision** | `⌥ ⇧ Space` | Analyzes your screen + answers questions about it | Floating HUD |
+**JarvisHUD** (the author's existing project) already has a production-grade native macOS shell: menu-bar presence, always-on-top HUD, glassmorphism Cockpit with 15 live tiles, hotkey-driven voice modes, WhisperKit local STT, streaming chat with semantic search, an MCP client, agent tool-use. What it lacks: a skills ecosystem, external connectors (Gmail / Calendar / iMessage / Health), pluggable local inference, energy-aware routing.
 
-- **⌥ M** cycles modes · **⌥ Return** toggles Chat · **⌥ ⇧ I** opens Cockpit · **⌥ ⇧ B** opens Briefing.
-- All voice hotkeys are push-to-talk. Custom modes in Settings.
+**[OpenJarvis](https://github.com/open-jarvis/OpenJarvis)** (Stanford Scaling Intelligence Lab, Apache 2.0) has exactly what JarvisHUD lacks: **150+ skills** via the [agentskills.io](https://agentskills.io) spec, connectors for Gmail / Google Calendar / Apple Health / iMessage / Slack / GitHub, pluggable inference (Ollama / vLLM / SGLang / llama.cpp / MLX), energy-aware routing ("Intelligence Per Watt"), a Morning Digest agent, and DSPy/GEPA learning loops. What it lacks: a polished native macOS UI.
 
-## Cockpit panel
+Both projects natively speak **[MCP](https://modelcontextprotocol.io)**. That's the connective tissue. Ultron keeps JarvisHUD's Swift shell and runs OpenJarvis as an embedded Python sidecar exposed over stdio MCP — the existing `MCPClient` is the bridge.
 
-A dense, glanceable dashboard laid out in a navy-glass grid (`.regularMaterial` over a dark navy gradient matching the chat visual language). Auto-refresh cadences are tuned per tile — live metrics every 5 seconds, aircraft + ISS every 30 seconds, Claude stats every 15 seconds, weather / news / commute on the 2-minute cycle.
+---
 
-| Tile | Content | Source |
-|------|---------|--------|
-| **Vejr** | Temperature, condition, feels-like, wind, humidity, today's high/low | Open-Meteo |
-| **Sol** | Sunrise, sunset, daylight length, solstice delta, next Danish holiday (Easter computed, rest fixed) | Pure Swift (`SolarDateMath`, `DanishHolidays`) |
-| **Luft & Måne** | AQI + UV bands · moon phase + illumination + next full moon | Open-Meteo + pure-Swift moon phase |
-| **Nyheder** | DR / Politiken / BBC / Guardian headlines | RSS feeds |
-| **Trafikinfo nær dig** | Live Vejdirektoratet events within 50 km, classified by DATEX II type, with per-row "for 2t 4m" chips + municipal reporter badges + a national-scope "Hele DK: 73 aktive · 23 dyr · 18 uheld · 18 hindringer" aggregate | Vejdirektoratet big-screen-events feed |
-| **Hjem / Rute** | Travel time, ETA, traffic delay, Tesla kWh + kr estimate, live-traffic link, destination weather, full-width zoomable map with charger overlays, motorvejsulykker on route | Apple Maps + Open-Meteo + adsb.lol + supercharge.info + OCM |
-| **System** | Battery, macOS version, hostname, uptime, chip | pmset, sw_vers, sysctl, ProcessInfo |
-| **Netværk** | Local IP, DNS, WiFi SSID, signal (dBm + quality), link rate | getifaddrs, scutil, WiFi framework |
-| **Ydelse** | CPU load % + bar, RAM + bar, Disk + bar, Strøm (watts), Termisk state | `host_statistics64` + `AppleSmartBattery` IORegistry |
-| **Handlinger** | Speedtest, LAN scan, WiFi quality + cumulative RX/TX bytes, Bluetooth status + connected devices | `networkQuality`, `arp`, `getifaddrs`, IOBluetooth |
-| **Fly over dig** | 3-4 nearest aircraft — origin → destination IATA pair, flight level, compass bearing from you, km distance | adsb.lol + adsbdb.com |
-| **Himmel** | Visible planets (Merkur/Venus/Mars/Jupiter/Saturn) with altitude/compass + ISS current subpoint with distance | Pure-Swift ephemeris + wheretheiss.at |
-| **Claude · Sessioner & Tokens** | I dag / I alt / Kørt / Seneste / Siden + Daily + Weekly bars (capped at >999% when over), længste session | Live sweep of `~/.claude/projects/*/*.jsonl` (all 4 token types summed per day + per model; stats-cache.json used only for session counts + firstSessionDate because it lags a day) |
-| **Claude · Projekter & Modeller** | Seneste 3 projekter, top tools (wrapped in rows of 4), per-model breakdown with cache-hit ratio | Same live JSONL sweep |
-
-EV charger overlays on the commute map: Tesla Superchargers (via supercharge.info, no auth) + Clever (via Open Charge Map, optional API key in Settings).
-
-Large token counts switch to the Danish **"mia"** (milliard) suffix above 1 billion — e.g. `1.6 mia` instead of `1600M`.
-
-## Briefing panel
-
-A lighter "what's in the world today" surface with six parallel news sources (DR, Politiken, BBC, Guardian, Reddit r/worldnews, Hacker News) plus a **Denne dag i historien** tile populated from Wikipedia. Same navy-glass visual language as the Cockpit.
-
-## Chat
-
-- Streaming replies with pulsing `▌` cursor
-- Conversation history in a left sidebar with full-text + semantic search (NLEmbedding)
-- Spotlight indexing — past conversations findable via ⌘Space
-- Tool-call cards in agent mode (icon + name + status badge)
-- Inline image preview on drag-drop
-- Citation chips for web-search results (number badge + host + arrow.up.right)
-- Code-block copy buttons (hover-reveal)
-- Retry + quoted-reply badges on transient errors
-
-Anthropic prompt caching (`cache_control: ephemeral`) is active on agent-mode system prompts — roughly 2× cost reduction on long tool loops.
-
-### Empty-state greetings
-
-Every fresh chat lands on a rotating one-liner — movie quotes, sci-fi nods, and a few Jarvis-specific jabs — so opening the app doesn't feel sterile. `GreetingProvider` picks a line at random per session; the wordmark-vs-sparkle icon choice rotates too.
-
-<p align="center">
-  <img src="docs/screenshots/chat-greeting-wordmark.png" width="380" alt="J.A.R.V.I.S wordmark + Welcome to the party, pal." />
-  <img src="docs/screenshots/chat-greeting-self-destruct.png" width="380" alt="This message will self-destruct in five seconds… medmindre du sender et svar." />
-  <img src="docs/screenshots/chat-greeting-gemini.png" width="380" alt="I eat Gemini for breakfast." />
-</p>
-
-## Tech stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | Swift 6.3 |
-| UI | SwiftUI + AppKit hybrid |
-| AI backends | Google Gemini 2.5 Flash / Pro + Anthropic Claude Opus/Sonnet/Haiku |
-| Local STT | WhisperKit (openai_whisper-large-v3-v20240930_turbo_632MB) |
-| Audio | AVAudioEngine (WAV/PCM) |
-| Hotkeys | [HotKey](https://github.com/soffes/HotKey) package |
-| Text insertion | Accessibility API (AXUIElement) + Pasteboard fallback |
-| Screen capture | ScreenCaptureKit |
-| Maps | MapKit (live + off-peak baseline for traffic delta) |
-| Location | CoreLocation (60 s cache + reverse-geocoded city) |
-| Semantic search | Apple NLEmbedding (on-device) |
-| Spotlight | CoreSpotlight (`CSSearchableItem` per conversation) |
-| Bluetooth | IOBluetooth (requires `NSBluetoothAlwaysUsageDescription` — added) |
-| System probes | `host_statistics64`, IOKit `AppleSmartBattery`, `getifaddrs` |
-| TTS | AVSpeechSynthesizer |
-| Persistence | Keychain (API keys) + JSON files (conversations / modes / metrics) |
-| Target | macOS 14.0+ |
-
-## Project structure
+## Architecture
 
 ```
-Jarvis/
-├── JarvisApp.swift                  # App entry point
-├── AppDelegate.swift                # Menu bar + pipeline wiring
-│
-├── Gemini/                          # Gemini + Anthropic chat clients
-│   ├── GeminiClient.swift
-│   ├── ChatSession.swift
-│   ├── AnthropicProvider.swift
-│   └── UsageTracker.swift
-│
-├── Agent/                           # Tool-using agent mode
-│   ├── AgentService.swift
-│   ├── AgentTool.swift
-│   ├── Tools/                       # SearchFilesTool, RunShellTool, …
-│   └── MCP/                         # MCPClient — external tool servers
-│
-├── Audio/
-│   ├── AudioCaptureManager.swift    # AVAudioEngine mic → WAV
-│   └── WhisperKitTranscriber.swift  # Local STT
-│
-├── Modes/
-│   ├── Mode.swift                   # Mode model + routing
-│   ├── BuiltInModes.swift
-│   └── ModeManager.swift
-│
-├── System/
-│   ├── HotkeyManager.swift
-│   ├── TextInsertionService.swift
-│   ├── LocationService.swift
-│   ├── ScreenCaptureService.swift
-│   ├── DictationPersistence.swift   # Notes.app + clipboard
-│   ├── FocusModeObserver.swift
-│   └── JarvisAppIntents.swift       # Shortcuts.app intents
-│
-├── UI/
-│   ├── SettingsView.swift
-│   ├── ChatView.swift
-│   ├── ConversationSidebar.swift
-│   ├── MessageBubble.swift
-│   ├── ChatCommandBar.swift
-│   ├── HUDWindow.swift
-│   ├── HUDContentView.swift
-│   ├── InfoModeView.swift           # Cockpit panel
-│   ├── UptodateView.swift           # Briefing panel
-│   ├── CommuteMapView.swift         # MapKit NSViewRepresentable with chargers
-│   ├── HotkeyCheatSheet.swift
-│   ├── JarvisTheme.swift
-│   ├── JarvisHUDBackground.swift
-│   └── JarvisWordmark.swift
-│
-├── Services/
-│   ├── InfoModeService.swift        # Cockpit orchestrator
-│   ├── WeatherService.swift         # Open-Meteo
-│   ├── NewsService.swift            # RSS
-│   ├── CommuteService.swift         # Apple Maps routing
-│   ├── SystemInfoService.swift      # OS / network / bluetooth probes
-│   ├── AirQualityService.swift
-│   ├── MoonService.swift
-│   ├── SolarDateMath.swift          # Pure Swift solar math
-│   ├── DanishHolidays.swift         # Gauss Easter + fixed dates
-│   ├── PlanetEphemeris.swift        # Pure Swift planet ephemeris
-│   ├── AircraftService.swift        # adsb.lol + adsbdb route resolver
-│   ├── ISSService.swift             # wheretheiss.at
-│   ├── TrafficEventsService.swift   # Vejdirektoratet DATEX II
-│   ├── ChargerService.swift         # Tesla Supercharger + Clever
-│   ├── ClaudeStatsService.swift     # Claude Code usage aggregator
-│   ├── HistoryService.swift         # This-day-in-history (Wikipedia)
-│   ├── InstantAnswerProvider.swift  # Pattern-match fast answers
-│   ├── SemanticIndex.swift          # NLEmbedding
-│   ├── SpotlightIndexer.swift
-│   ├── WebSearchService.swift
-│   ├── ConversationStore.swift
-│   ├── MetricsService.swift
-│   ├── KeychainService.swift
-│   ├── TTSService.swift
-│   └── LoggingService.swift
-│
-└── Resources/
-    ├── Assets.xcassets
-    ├── Info.plist                   # LSUIElement + usage descriptions
-    └── Jarvis.entitlements
+┌──────────────────────────────────────────────────────────────────┐
+│  Ultron.app  (native macOS, Swift 6.3, SwiftUI + AppKit)         │
+│                                                                  │
+│  UI: HUD / Chat / Cockpit / Briefing / Widgets                   │
+│   │                                                              │
+│   ▼                                                              │
+│  AgentService  ──▶  AgentToolRegistry                            │
+│                        │                                         │
+│                        ├─ NativeSkill   ← Ultron/Skills/         │
+│                        │                                         │
+│                        └─ MCPTool       ← MCPRegistry            │
+│                                                                  │
+│  AIProvider   ──▶  ProviderRouter  ─┬─ AnthropicProvider         │
+│                      (new)          ├─ GeminiProvider            │
+│                                     ├─ OllamaProvider (new)      │
+│                                     └─ MLXProvider   (new)       │
+│                                                                  │
+│  EnergyMonitor ──▶ TraceStore (new, SQLite)                      │
+│                                                                  │
+│  Hotkey / Voice / WhisperKit / TTS (from JarvisHUD)              │
+└──────────────────────────────────────────────────────────────────┘
+          │ stdio JSON-RPC (existing MCPClient)
+          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  ultron_sidecar  (Python 3.12, hermetic venv via uv)             │
+│    ┌── OpenJarvis (git submodule, pinned to v0.1.1)              │
+│    │     SkillManager / SyncEngine / InferenceRouter             │
+│    │                                                             │
+│    └── bridge.py:  exposes skills + connectors + digest          │
+│                    as MCP tools over stdio                       │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+**Design choices:**
+- **stdio MCP**, not XPC or embedded Python. JarvisHUD's `MCPClient` already handles this cleanly; no new IPC layer.
+- **Hermetic Python venv** bundled via `uv` + pinned lockfile. No system Python dependency.
+- **Hybrid native / Python:** latency-critical paths (provider routing, energy telemetry, trace store, HUD-level skills) are native Swift. Skills and connectors live in the Python sidecar.
+- **Submodule, not fork.** OpenJarvis stays pinned to tagged releases; upstream bumps are submodule-pointer moves.
+
+---
+
+## Roadmap
+
+Seven phases, ~7 weeks for a personal-use milestone (unsigned DMG). Public-release polish (Developer ID, notarization, Sparkle, localization, VoiceOver) is deferred.
+
+| Phase | Goal | Branch |
+|---|---|---|
+| **1 — Sidecar foundation** | Python sidecar spawns, answers MCP `initialize`, logs structured | `ultron-phase-1-sidecar` (active) |
+| **2 — OpenJarvis as MCP tools** | Skills, connectors, Morning Digest callable from Swift agent mode | `ultron-phase-2-mcp-bridge` |
+| **3 — Native providers + router** | `OllamaProvider`, `MLXProvider`, `ProviderRouter` with battery-aware policy, `EnergyMonitor`, `TraceStore` | `ultron-phase-3-router` |
+| **4 — Feature integration** | Morning Digest Cockpit tile + widget, Gmail/Calendar tiles, learning-loop UI | `ultron-phase-4-features` |
+| **5 — Polish (personal)** | Smoke tests, expanded unit tests, unsigned DMG, README setup guide | `ultron-phase-5-polish` |
+
+Future phases (post-v1):
+- Public release — Developer ID signing, notarization, Sparkle auto-update
+- Localization (Danish, English, German, Swedish) + VoiceOver audit
+- Additional modes — Meeting recording, Clipboard history, Email drafting
+- Wake word activation (Porcupine already scaffolded)
+
+Full plan: [`docs/ultron-plan.md`](docs/ultron-plan.md) (to be added).
+
+---
+
+## Inherited from JarvisHUD (working today)
+
+Ultron forks JarvisHUD's `Charlie` branch, so these features work out of the box:
+
+**Voice modes**
+| Mode | Hotkey | What it does |
+|------|--------|-------------|
+| Dictation | `⌥ Space` | Local WhisperKit large-v3 → text at cursor |
+| VibeCode | `⌥ Space` | Spoken idea → structured AI coding prompt |
+| Professional | `⌥ Space` | Dictation rewritten for professional communication |
+| Q&A | `⌥ Q` | Gemini-grounded question answering with web search + citation chips |
+| Vision | `⌥ ⇧ Space` | Screen analysis via Gemini vision |
+
+**Cockpit dashboard** — 15 live tiles: Vejr, Sol, Luft/Måne, Nyheder, Trafikinfo (live Vejdirektoratet), Hjem/Rute commute with MapKit + EV chargers, System, Netværk, Ydelse, Handlinger, Fly over dig (ADS-B), Himmel (planets + ISS), Claude Code usage stats (sessions/tokens + projects/models).
+
+**Briefing panel** — 6-source news (DR, Politiken, BBC, Guardian, Reddit, HN) + Denne dag i historien.
+
+**Chat** — streaming replies, conversation history with semantic search (NLEmbedding), Spotlight indexing, agent mode with tool-call cards, image attachments, citation chips, Anthropic prompt caching.
+
+**Agent mode** — tool-using Claude with file system ops, code execution, web search, MCP servers.
+
+**Tech stack** — Swift 6.3, SwiftUI + AppKit hybrid, macOS 14+, Gemini 2.5 Flash/Pro, Claude Opus 4.7 / Sonnet 4.6 / Haiku, WhisperKit, MapKit, ScreenCaptureKit, HotKey SPM package.
+
+---
+
+## Coming via OpenJarvis (Phases 2-4)
+
+- **Skills marketplace** — install community skills via `/skill install <id>`; each appears as a native tool in agent mode
+- **Connectors** — Gmail unread, Google Calendar next event, Apple Health daily summary, iMessage recent threads, Slack, GitHub, Notion, Dropbox
+- **Local inference** — Ollama + MLX as first-class `AIProvider`s, selected by battery state + task complexity heuristic
+- **Energy-aware routing** — every LLM call records provider, reason, tokens, joules estimate; Settings pane shows distribution + local-vs-cloud savings
+- **Morning Digest agent** — aggregates mail / calendar / news / weather; renders as Cockpit tile + widget with TTS narration
+- **Learning loop** — thumbs-up/down on trace entries feed a DSPy/GEPA-style offline optimization run on the sidecar
+
+---
 
 ## Installation
 
-### From DMG
-1. Download `Jarvis-<version>.dmg` from Releases
-2. Open the DMG and drag Jarvis to Applications
-3. Launch Jarvis from Applications
+**Current state:** Ultron is pre-alpha. The Xcode project still uses JarvisHUD bundle IDs — a naming pass is the next Phase 1 task.
 
-### Build from source
+**Build from source:**
+
 ```bash
-git clone git@github.com:Parthee-Vijaya/JarvisHUD.git
-cd JarvisHUD
+git clone --recurse-submodules https://github.com/Parthee-Vijaya/Ultron.git
+cd Ultron
+# Phase 1 is in progress; the sidecar scaffolding is not yet landed.
+# For now, the inherited JarvisHUD experience works:
 ./run-dev.sh                                  # Debug build + launch
-# or
-xcodebuild -scheme Jarvis -configuration Release build
-./build-dmg.sh                                # Notarized DMG
 ```
 
-Requirements: Xcode 26+, macOS 14+ SDK, Swift 6.3.
+Requirements: Xcode 26+, macOS 14+ SDK, Swift 6.3. Ollama (for local LLM) lands in Phase 3.
 
-## Setup
+After Phase 1 lands, setup will additionally require:
+- `uv` (auto-bundled inside the app — no system install needed)
+- First-launch onboarding runs `uv sync --frozen` to prepare the sidecar venv
 
-1. Launch — the onboarding walks you through permissions (Mic · Accessibility · Screen capture · Speech · Location · Calendar · Bluetooth).
-2. Menu bar icon → **Settings** → paste **Gemini** + **Anthropic** API keys → **Save** + **Test**.
-3. Optional: add an **Open Charge Map** key in Settings to enable Clever chargers on the commute map (Tesla Superchargers work without any key).
-4. Set your **home address** in Settings for the Cockpit's Hjem tile.
+---
 
-API keys live in Keychain, never on disk.
+## Repository layout
 
-## Keyboard shortcuts
+```
+Ultron/
+├── Jarvis/                     # Swift sources (will be renamed Ultron/ in naming pass)
+│   ├── Agent/MCP/              # Existing MCP client — sidecar bridge
+│   ├── AI/                     # AnthropicProvider, GeminiREST + new Ollama/MLX/Router
+│   ├── Sidecar/                # NEW — SidecarSupervisor, Bootstrap, Log
+│   ├── Skills/                 # NEW — native skill protocol + registry
+│   ├── Telemetry/              # NEW — EnergyMonitor, TraceStore
+│   └── …                       # UI, Services, Audio, Modes (from JarvisHUD)
+├── Sidecar/python/             # NEW — Python sidecar package
+│   └── ultron_sidecar/         # MCP server, OpenJarvis bridges
+├── ThirdParty/
+│   └── openjarvis/             # Git submodule, pinned to v0.1.1
+├── docs/
+│   └── ultron-plan.md          # Full implementation plan
+└── JarvisWidgetExtension/      # macOS widgets (scaffolded, wiring in Phase 1)
+```
 
-| Shortcut | Action |
-|----------|--------|
-| `⌥ Space` | Dictation / VibeCode / Professional (push-to-talk) |
-| `⌥ Q` | Q&A mode (push-to-talk) |
-| `⌥ ⇧ Space` | Vision mode (push-to-talk) |
-| `⌥ M` | Cycle mode |
-| `⌥ Return` | Toggle Chat |
-| `⌥ ⇧ I` | Toggle Cockpit |
-| `⌥ ⇧ B` | Toggle Briefing |
-| `⌘ Space` (in chat) | Semantic search history |
+---
 
 ## Data & privacy
 
-- **API keys** in macOS Keychain
-- **Audio** captured in memory only — never saved
-- **Screenshots** (Vision) held in memory for the API round-trip, then discarded
-- **Logs** at `~/Library/Logs/Jarvis/jarvis.log` (rolled at 10 MB)
-- **Metrics** at `~/Library/Logs/Jarvis/metrics.jsonl`
-- **Conversations** at `~/Library/Application Support/Jarvis/conversations/*.json`
-- **Usage data** at `~/Library/Application Support/Jarvis/usage.json`
-- **Stats-cache** is read-only from `~/.claude/stats-cache.json` (written by Claude Code)
+- **API keys** live in macOS Keychain, never on disk
+- **Audio** captured in memory only, never saved
+- **Screenshots** (Vision mode) held in memory for the API round-trip, then discarded
+- **Local LLM** (Phase 3) means most traffic never leaves your Mac
+- **Logs** at `~/Library/Logs/Ultron/` (after naming pass: currently `~/Library/Logs/Jarvis/`)
+- **Traces** at `~/Library/Application Support/Ultron/traces.db` (Phase 3+)
+- **Connector credentials** (Phase 2) stored via OpenJarvis's own OAuth flow in Keychain
 
-All public data calls (weather, traffic, chargers, ADS-B, ISS, Open Charge Map) are unauthenticated and see only your approximate coordinate. LLM calls go to Google / Anthropic.
+---
 
-## License
+## Licenses & attribution
 
-MIT
+- **Ultron** (this repo) — MIT, inheriting JarvisHUD's license
+- **[JarvisHUD](https://github.com/Parthee-Vijaya/JarvisHUD)** — MIT, by the same author
+- **[OpenJarvis](https://github.com/open-jarvis/OpenJarvis)** — Apache 2.0, Stanford Scaling Intelligence Lab (included as `ThirdParty/openjarvis/` submodule, pinned to v0.1.1)
+
+Third-party frameworks: [HotKey](https://github.com/soffes/HotKey) (MIT), [WhisperKit](https://github.com/argmaxinc/WhisperKit) (MIT).
+
+---
+
+## Upstream cherry-picks
+
+JarvisHUD continues to evolve in parallel on its own `Charlie` branch (widget target wiring, agent confirmation cards, etc.). Useful improvements land in Ultron via:
+
+```bash
+git fetch jarvishud
+git cherry-pick <commit-sha>
+```
+
+The `jarvishud` remote is pre-configured for this purpose.
 
 ---
 
