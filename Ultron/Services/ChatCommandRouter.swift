@@ -160,11 +160,42 @@ final class ChatCommandRouter {
 
         chatSession.addUserMessage(userFacing)
 
+        // Phase 4c: hook the next streaming-finished edge so the chat-issued
+        // /digest persists to the sidecar's DigestStore — same store the
+        // Cockpit tile's Regenerer button writes to. That way typing /digest
+        // in chat also hydrates the tile next launch.
+        let modelID = modelIdFor(provider: mode.provider)
+        chatSession.onStreamingFinished = { [weak info] message in
+            guard let info, let message, !message.text.isEmpty else { return }
+            Task { @MainActor in
+                await info.persistExternalDigest(
+                    text: message.text,
+                    model: modelID
+                )
+            }
+        }
+
         if mode.provider != .gemini, mode.agentTools,
            let agent = agentChatPipeline(mode.provider) {
             agent.sendTextMessage(prompt)
         } else {
             chatPipeline.sendTextMessage(prompt, mode: mode)
+        }
+    }
+
+    /// Resolve a human-readable model id for the persisted trace — best
+    /// effort, falls back to the provider name so the Læringsspor filter
+    /// still works when UserDefaults doesn't have an explicit setting.
+    private func modelIdFor(provider: AIProviderType) -> String {
+        switch provider {
+        case .ollama:
+            return UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel) ?? "llama3.2:latest"
+        case .anthropic:
+            return UserDefaults.standard.string(forKey: Constants.Defaults.agentClaudeModel) ?? "claude-sonnet-4-6"
+        case .gemini:
+            return "gemini-2.5-flash"
+        case .auto:
+            return "auto"
         }
     }
 

@@ -62,8 +62,10 @@ struct SettingsMCPPane: View {
     var body: some View {
         SettingsPane(
             title: "MCP-servere",
-            subtitle: "Model Context Protocol-servere eksponerer eksterne værktøjer til Agent-mode. Gemmes i ~/.ultron/mcp.json."
+            subtitle: "Model Context Protocol-servere eksponerer eksterne værktøjer til Agent-mode. Built-in Ultron-sidecar auto-registreres. Ekstra servere gemmes i ~/.ultron/mcp.json."
         ) {
+            builtInSidecarCard
+
             if configSnapshot.isEmpty && editingDraft == nil {
                 emptyStateCard
             } else {
@@ -100,6 +102,51 @@ struct SettingsMCPPane: View {
         } message: {
             if let name = deletionCandidate {
                 Text("Vil du slette '\(name)' fra mcp.json? Serveren stoppes med det samme.")
+            }
+        }
+    }
+
+    // MARK: - Built-in sidecar diagnostic
+
+    /// Shows what `BuiltInSidecar` auto-detected at launch. Helps users see
+    /// why the sidecar did/didn't start without having to dig through
+    /// ~/Library/Logs/Ultron/ultron.log.
+    private var builtInSidecarCard: some View {
+        let resolution = BuiltInSidecar.resolved
+        let healthy = resolution.uvPath != nil && resolution.sidecarDir != nil
+        return SettingsCard(
+            title: "Built-in Ultron-sidecar",
+            footer: "Auto-registreres ved hver start. Skriv en entry med navn 'ultron' i mcp.json for at overskrive."
+        ) {
+            VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
+                HStack(spacing: 6) {
+                    Image(systemName: healthy ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(healthy ? .green : .orange)
+                    Text(healthy ? "Detekteret" : "Mangler konfiguration")
+                        .font(.caption.weight(.semibold))
+                }
+                Text(resolution.diagnostic)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let uv = resolution.uvPath {
+                    HStack(spacing: 4) {
+                        Text("uv:").font(.caption2).foregroundStyle(.secondary)
+                        Text(uv).font(.caption2.monospaced())
+                    }
+                }
+                if let dir = resolution.sidecarDir {
+                    HStack(spacing: 4) {
+                        Text("sidecar:").font(.caption2).foregroundStyle(.secondary)
+                        Text(dir).font(.caption2.monospaced()).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                if !resolution.venvReady && healthy {
+                    Text("Første start kører `uv sync --native-tls` — tag ~30s.")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }

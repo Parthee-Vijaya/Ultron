@@ -45,7 +45,31 @@ struct ChatMessage: Identifiable, Codable, Equatable {
 @Observable
 class ChatSession {
     var messages: [ChatMessage] = []
-    var isStreaming = false
+    var isStreaming = false {
+        didSet {
+            if oldValue && !isStreaming {
+                // One-shot hook so callers like `/digest` can observe the
+                // natural streaming-finished edge without touching pipelines.
+                // Captured locally + cleared so a subsequent turn can
+                // register a new handler.
+                let handler = onStreamingFinished
+                onStreamingFinished = nil
+                handler?(lastAssistantMessage)
+            }
+        }
+    }
+
+    /// Phase 4c: fires exactly once the next time `isStreaming` transitions
+    /// from true to false. Auto-clears so the hook is effectively "await
+    /// this turn's completion". Used by ChatCommandRouter's `/digest` to
+    /// persist the assistant response to the sidecar's DigestStore.
+    var onStreamingFinished: ((ChatMessage?) -> Void)?
+
+    /// The most recent assistant message (or nil when the conversation is
+    /// empty or the last turn was the user's). Read-only computed.
+    var lastAssistantMessage: ChatMessage? {
+        messages.reversed().first { $0.role == .assistant }
+    }
 
     /// Tool call currently awaiting user approval in agent mode. When non-nil
     /// the chat UI renders an inline confirmation card; nil means nothing is
