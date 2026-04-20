@@ -1,8 +1,9 @@
 import AppKit
 import CoreSpotlight
 import SwiftUI
+import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     // MARK: - UI
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
@@ -128,6 +129,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // ready to handle it.
             NSApplication.shared.servicesProvider = self
             NSUpdateDynamicServices()
+            // Phase 4c polish: claim UNUserNotificationCenter delegate so
+            // taps on the morning-briefing notification route into our
+            // handler (which opens the Cockpit). Also let notifications
+            // show their banner even when Ultron has focus — otherwise
+            // they're silently swallowed.
+            UNUserNotificationCenter.current().delegate = self
             // v1.2.0: ping GitHub Releases once a day to see if a newer
             // Ultron DMG is published. Non-blocking; prompts only when a
             // higher semver is found.
@@ -139,6 +146,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
             MCPRegistry.shared.shutdown()
+        }
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate (Phase 4c polish)
+
+    /// Show banner + play sound when Ultron has focus. Without this override
+    /// foreground delivery is silent, which defeats the point of the morning
+    /// briefing notification.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list])
+    }
+
+    /// User tapped a notification. The briefing flow stashes
+    /// `ultron.action=openCockpit` in userInfo — honour that by popping the
+    /// Cockpit + regenerating if the briefing is stale.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let action = (userInfo["ultron.action"] as? String) ?? ""
+        Task { @MainActor in
+            switch action {
+            case "openCockpit":
+                self.hudController.showInfoMode()
+                NSApp.activate(ignoringOtherApps: true)
+            default:
+                break
+            }
+            completionHandler()
         }
     }
 
