@@ -52,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let focusObserver = FocusModeObserver()
     lazy var updatesService = UpdatesService(locationService: locationService)
     lazy var infoModeService = InfoModeService(locationService: locationService)
+    let briefingScheduler = BriefingScheduler()
     lazy var errorPresenter = ErrorPresenter(hudController: hudController)
     private lazy var summaryService = DocumentSummaryService(
         geminiClient: geminiClient,
@@ -108,6 +109,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         ?? "llama3.2:latest"
                 }
             }
+            // Phase 4c — automatic morning briefing. Scheduler fires at the
+            // configured time; closure returns a short summary for the
+            // notification body.
+            briefingScheduler.onFire = { [weak self] in
+                guard let self else { return nil }
+                await self.infoModeService.regenerateDigest()
+                return self.infoModeService.cachedDigest?.text
+            }
+            briefingScheduler.start()
             // v1.4 Fase 4 slice: register ourselves as a services-menu
             // provider so "Ask Ultron about this" appears in every app's
             // Services submenu for selected text. The Info.plist NSServices

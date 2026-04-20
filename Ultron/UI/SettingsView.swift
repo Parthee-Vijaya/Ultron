@@ -907,6 +907,8 @@ struct SettingsAgentPane: View {
                 .pickerStyle(.menu)
             }
 
+            briefingScheduleCard
+
             SettingsCard(
                 title: "Ollama (lokal LLM)",
                 footer: "Daemon'en kører typisk via `brew services start ollama`. Hent en tool-kapabel model med fx `ollama pull llama3.2`."
@@ -1030,6 +1032,70 @@ struct SettingsAgentPane: View {
             Label("Ikke tilgængelig på :11434", systemImage: "exclamationmark.triangle.fill")
                 .font(.caption)
                 .foregroundStyle(.orange)
+        }
+    }
+
+    // MARK: - Phase 4c briefing schedule
+
+    @ViewBuilder
+    private var briefingScheduleCard: some View {
+        let scheduler = (NSApp.delegate as? AppDelegate)?.briefingScheduler
+        SettingsCard(
+            title: "Automatisk morgen-briefing",
+            footer: "Når aktiv, genereres briefingen via ProviderRouter på det valgte tidspunkt. En stille notifikation dukker op når den er klar. Kræver notifikations-tilladelse."
+        ) {
+            if let scheduler {
+                scheduleControls(scheduler)
+            } else {
+                Text("Scheduler ikke tilgængelig i denne build.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func scheduleControls(_ scheduler: BriefingScheduler) -> some View {
+        @Bindable var scheduler = scheduler
+        VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
+            Toggle("Aktivér daglig auto-briefing", isOn: $scheduler.enabled)
+                .onChange(of: scheduler.enabled) { _, newValue in
+                    if newValue {
+                        Task { _ = await scheduler.requestNotificationPermission() }
+                    }
+                }
+            HStack(spacing: 8) {
+                Text("Tidspunkt:")
+                    .font(.caption)
+                Picker("", selection: $scheduler.hour) {
+                    ForEach(0..<24, id: \.self) { h in
+                        Text(String(format: "%02d", h)).tag(h)
+                    }
+                }
+                .frame(width: 80)
+                .labelsHidden()
+                Text(":").font(.caption)
+                Picker("", selection: $scheduler.minute) {
+                    ForEach(Array(stride(from: 0, to: 60, by: 5)), id: \.self) { m in
+                        Text(String(format: "%02d", m)).tag(m)
+                    }
+                }
+                .frame(width: 80)
+                .labelsHidden()
+            }
+            .disabled(!scheduler.enabled)
+
+            if scheduler.enabled, let next = scheduler.nextFireDate {
+                Text("Næste kørsel: \(DateFormatter.localizedString(from: next, dateStyle: .short, timeStyle: .short))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let last = scheduler.lastFireDate {
+                let status = scheduler.lastFireResult ?? ""
+                Text("Seneste: \(DateFormatter.localizedString(from: last, dateStyle: .short, timeStyle: .short)) · \(status.hasPrefix("error") ? "fejl" : "ok")")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
