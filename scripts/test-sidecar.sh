@@ -69,12 +69,14 @@ try:
     # 2) initialized notification
     send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
 
-    # 3) tools/list
+    # 3) tools/list — expect ping + OpenJarvis bridges
     send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     resp = recv(proc, 2)
     tools = resp["result"]["tools"]
-    assert any(t["name"] == "ping" for t in tools), f"ping tool not listed: {tools}"
-    print(f"✓ tools/list returned {len(tools)} tool(s): {[t['name'] for t in tools]}")
+    names = {t["name"] for t in tools}
+    for expected in ("ping", "calculator", "think"):
+        assert expected in names, f"{expected!r} not listed: {sorted(names)}"
+    print(f"✓ tools/list returned {len(tools)} tool(s): {sorted(names)}")
 
     # 4) tools/call ping
     send(proc, {
@@ -84,10 +86,52 @@ try:
         "params": {"name": "ping", "arguments": {"message": "hello from swift"}},
     })
     resp = recv(proc, 3)
-    content = resp["result"]["content"]
-    text = content[0]["text"]
+    text = resp["result"]["content"][0]["text"]
     assert text == "pong: hello from swift", f"unexpected ping response: {text}"
     print(f"✓ tools/call ping → {text!r}")
+
+    # 5) tools/call calculator (OpenJarvis bridged)
+    send(proc, {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {"name": "calculator", "arguments": {"expression": "2+3*sqrt(16)"}},
+    })
+    resp = recv(proc, 4)
+    text = resp["result"]["content"][0]["text"]
+    assert text == "14.0", f"unexpected calculator response: {text}"
+    print(f"✓ tools/call calculator(2+3*sqrt(16)) → {text!r}")
+
+    # 6) tools/call think (OpenJarvis bridged, echoes input)
+    send(proc, {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {"name": "think", "arguments": {"thought": "Phase 2a works"}},
+    })
+    resp = recv(proc, 5)
+    text = resp["result"]["content"][0]["text"]
+    assert "Phase 2a works" in text, f"unexpected think response: {text}"
+    print(f"✓ tools/call think → {text!r}")
+
+    # 7) skill discovery — only asserts if ~/.ultron/skills/demo/greet-in-danish/ is installed
+    if any(t["name"] == "skill.greet-in-danish" for t in tools):
+        send(proc, {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.greet-in-danish",
+                "arguments": {"context": "name: Pavi"},
+            },
+        })
+        resp = recv(proc, 6)
+        text = resp["result"]["content"][0]["text"]
+        assert "greet-in-danish" in text and "name: Pavi" in text, \
+            f"skill output missing expected content: {text[:200]}"
+        print("✓ tools/call skill.greet-in-danish → instructions returned with context")
+    else:
+        print("⊙ skill.greet-in-danish not installed — skipping skill invocation test")
 
     print("\nAll checks passed.")
 finally:

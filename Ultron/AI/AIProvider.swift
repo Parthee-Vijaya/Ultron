@@ -6,6 +6,7 @@ import Foundation
 enum AIProviderType: String, Codable, CaseIterable, Identifiable {
     case gemini
     case anthropic
+    case ollama
 
     var id: String { rawValue }
 
@@ -13,6 +14,16 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .gemini: return "Google Gemini"
         case .anthropic: return "Anthropic Claude"
+        case .ollama: return "Ollama (lokal)"
+        }
+    }
+
+    /// Whether the provider runs locally. Used by routing policy + Settings UI
+    /// to distinguish privacy/cost tiers.
+    var isLocal: Bool {
+        switch self {
+        case .gemini, .anthropic: return false
+        case .ollama: return true
         }
     }
 }
