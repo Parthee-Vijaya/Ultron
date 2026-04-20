@@ -2125,6 +2125,8 @@ struct InfoModeView: View {
     /// at fortælle briefingen på dansk.
     @State private var isSpeakingBriefing = false
 
+    @State private var showDigestHistory = false
+
     @ViewBuilder
     private var briefingTile: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2134,6 +2136,9 @@ struct InfoModeView: View {
                 Text(error)
                     .font(.caption2)
                     .foregroundStyle(.red)
+            }
+            if !service.digestHistory.isEmpty {
+                briefingHistoryDisclosure
             }
         }
         .padding(12)
@@ -2215,6 +2220,44 @@ struct InfoModeView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(estSeconds))
             isSpeakingBriefing = false
+        }
+    }
+
+    /// Expandable "Tidligere briefinger" list — collapsed by default to keep
+    /// the tile compact. Shows up to service.digestHistory entries with
+    /// model + age; full body appears on click-to-expand.
+    @ViewBuilder
+    private var briefingHistoryDisclosure: some View {
+        DisclosureGroup(isExpanded: $showDigestHistory) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(service.digestHistory.prefix(5).enumerated()), id: \.offset) { _, entry in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(DateFormatter.localizedString(
+                                from: entry.generatedAt, dateStyle: .short, timeStyle: .short
+                            ))
+                            .font(.caption2.weight(.medium))
+                            Text("· \(entry.model)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(entry.text)
+                            .font(.caption)
+                            .foregroundStyle(.primary.opacity(0.82))
+                            .textSelection(.enabled)
+                            .lineLimit(4)
+                            .truncationMode(.tail)
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.leading, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        } label: {
+            Label("Tidligere briefinger (\(service.digestHistory.count))",
+                  systemImage: "clock.arrow.circlepath")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
