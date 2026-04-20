@@ -76,6 +76,16 @@ final class ProviderRouter: AIProvider {
         }
         let tokens = estimatedTokens(messages: messages, options: options)
         let battery = EnergyMonitor.shared.currentState()
+        // Phase 3e: pull net user ratings per provider for the current task
+        // class. TraceStore filters by taskType prefix (so "auto.send" and
+        // "agent.ollama" both match "ag…" / "au…") — we pass an empty prefix
+        // here to consider all tasks, which is the most forgiving behaviour.
+        // Tightening to per-task-class is a future tweak when we have more data.
+        let ratings: [AIProviderType: Int] = [
+            .ollama:    TraceStore.shared.ratingSum(provider: "ollama"),
+            .anthropic: TraceStore.shared.ratingSum(provider: "anthropic"),
+            .gemini:    TraceStore.shared.ratingSum(provider: "gemini")
+        ]
         let inputs = RoutingPolicy.Inputs(
             taskType: "auto",
             hasVision: hasVision,
@@ -84,7 +94,8 @@ final class ProviderRouter: AIProvider {
             ollamaAvailable: ollamaAvailable,
             onBattery: !battery.onAC,
             batteryPercent: battery.chargePercent,
-            userPreference: nil
+            userPreference: nil,
+            ratingByProvider: ratings
         )
         let decision = RoutingPolicy.decide(inputs)
         return (decision.provider, decision.reason)

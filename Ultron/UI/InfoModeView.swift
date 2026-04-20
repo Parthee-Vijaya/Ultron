@@ -2116,40 +2116,22 @@ struct InfoModeView: View {
 
     // MARK: - Phase 4c briefing tile
 
-    /// Bottom Cockpit tile that renders the same text `/digest` feeds to the
-    /// LLM, so the user can eyeball the context before committing to an AI
-    /// round-trip. "Åbn i chat" pre-fills `/digest` via the ultron:// URL
-    /// scheme, which AppDelegate's handler drops into the chat command bar.
+    /// Bottom Cockpit tile: when we have a cached AI-synthesised briefing,
+    /// show that. Otherwise fall back to the raw `/digest` context so the
+    /// user always sees something actionable. Regenerate button triggers a
+    /// background LLM call via the ProviderRouter (respects local-first
+    /// routing) + persists via the sidecar so next launch hydrates without
+    /// another round-trip.
     @ViewBuilder
     private var briefingTile: some View {
-        let context = service.digestContext()
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Briefing-kladde", systemImage: "newspaper")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    let url = URL(string: "ultron://chat?prompt=/digest")!
-                    NSWorkspace.shared.open(url)
-                } label: {
-                    Label("Åbn i chat som /digest", systemImage: "arrowshape.turn.up.right")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-                Button {
-                    Task { await service.refresh() }
-                } label: {
-                    Label("Opdater", systemImage: "arrow.clockwise")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
+            briefingHeader
+            briefingBody
+            if let error = service.digestError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
             }
-            Text(context)
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-                .foregroundStyle(.primary.opacity(0.85))
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
         .background(
@@ -2160,5 +2142,60 @@ struct InfoModeView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.white.opacity(0.05), lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var briefingHeader: some View {
+        HStack(spacing: 8) {
+            Label(briefingTitle, systemImage: "newspaper")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let cached = service.cachedDigest {
+                Text("· \(cached.model) · \(timeAgo(cached.generatedAt))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if service.isDigestGenerating {
+                ProgressView().controlSize(.small)
+            }
+            Button {
+                Task { await service.regenerateDigest() }
+            } label: {
+                Label(service.cachedDigest == nil ? "Generer briefing" : "Regenerer", systemImage: "sparkles")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(service.isDigestGenerating)
+            Button {
+                let url = URL(string: "ultron://chat?prompt=/digest")!
+                NSWorkspace.shared.open(url)
+            } label: {
+                Label("Åbn i chat", systemImage: "arrowshape.turn.up.right")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private var briefingTitle: String {
+        service.cachedDigest == nil ? "Briefing-kladde (rå data)" : "AI-briefing"
+    }
+
+    @ViewBuilder
+    private var briefingBody: some View {
+        if let cached = service.cachedDigest {
+            Text(cached.text)
+                .font(.callout)
+                .textSelection(.enabled)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(service.digestContext())
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.primary.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

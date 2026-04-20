@@ -56,6 +56,19 @@ final class TraceStore {
         }
     }
 
+    /// Net rating for a provider on an optional task type, summed across the
+    /// last `lookback` entries. Used by `RoutingPolicy` to deprioritise
+    /// providers the user has thumbs-downed. `nil` taskType means "any task".
+    ///
+    /// Returns 0 when the trace file is missing — same signal as "no opinion yet".
+    func ratingSum(provider: String, taskType: String? = nil, lookback: Int = 100) -> Int {
+        recent(limit: lookback)
+            .filter { $0.provider == provider }
+            .filter { taskType == nil || $0.taskType.hasPrefix(taskType!) }
+            .map { $0.rating }
+            .reduce(0, +)
+    }
+
     /// Read last `limit` entries in reverse-chronological order. Loads the
     /// whole file into memory — acceptable since we rotate at 10 MB.
     func recent(limit: Int = 200) -> [TraceEntry] {

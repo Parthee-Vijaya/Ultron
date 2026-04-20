@@ -84,7 +84,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // v1.1.7: spawn any MCP servers the user declared in ~/.ultron/mcp.json
             // and register their tools with the shared agent registry. Runs in
             // the background — we don't block app launch if a server is slow.
-            Task { await MCPRegistry.shared.bootstrap() }
+            // Phase 4c: after the sidecar registers, hydrate the briefing tile
+            // from the persisted `digest.latest` result so the Cockpit shows
+            // something meaningful before the user hits Regenerate.
+            Task {
+                await MCPRegistry.shared.bootstrap()
+                await infoModeService.loadCachedDigest()
+            }
+            // Phase 4c wiring: briefing uses a ProviderRouter so Regenerate
+            // respects local-first routing + trace logging.
+            do {
+                let keychain = keychainService
+                let usage = usageTracker
+                infoModeService.briefingProviderFactory = {
+                    ProviderRouter(factories: .init(
+                        ollama:    { OllamaProvider() },
+                        anthropic: { AnthropicProvider(keychain: keychain) },
+                        gemini:    { GeminiAIProvider(keychain: keychain, usage: usage) }
+                    ))
+                }
+                infoModeService.briefingModelProvider = {
+                    UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
+                        ?? "llama3.2:latest"
+                }
+            }
             // v1.4 Fase 4 slice: register ourselves as a services-menu
             // provider so "Ask Ultron about this" appears in every app's
             // Services submenu for selected text. The Info.plist NSServices
@@ -554,15 +577,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? "llama3.2:latest"
             pipeline = AgentChatPipeline(provider: traced, chatSession: chatSession, modelID: modelID)
         case .auto:
+            let usage = usageTracker  // capture for factory closure
             let router = ProviderRouter(factories: .init(
                 ollama:    { OllamaProvider() },
                 anthropic: { AnthropicProvider(keychain: keychain) },
-                // Gemini path: ProviderRouter never routes to this factory
-                // (Gemini chat uses a different non-AIProvider pipeline),
-                // but we still need a conformer for the enum exhaustiveness.
-                // If the router ever picks .gemini we surface an explanatory
-                // error via this stub.
-                gemini:    { UnsupportedGeminiProvider() }
+                gemini:    { GeminiAIProvider(keychain: keychain, usage: usage) }
             ))
             // Prefer the Ollama default model for agent-mode auto; the router
             // swaps to the right one per decision.
