@@ -17,6 +17,9 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     /// v1.5 Phase 4c: trigger AI-briefing regeneration from anywhere.
     /// Equivalent to tapping "Regenerer" in the Cockpit briefing tile.
     case generateDigest
+    /// v1.5 Phase 4d: toggle Meeting Mode (start/stop long-form recording →
+    /// WhisperKit transcription → structured meeting-note summary).
+    case meetingMode
 
     var id: String { rawValue }
 
@@ -34,6 +37,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
         case .infoMode:        return "Cockpit (vejr + system)"
         case .agent:           return "Agent (filoperationer via Claude)"
         case .generateDigest:  return "Generer AI-briefing"
+        case .meetingMode:     return "Møde-mode (start/stop)"
         }
     }
 
@@ -41,7 +45,7 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
     var isPushToTalk: Bool {
         switch self {
         case .dictation, .qna, .vision, .translate: return true
-        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent, .generateDigest: return false
+        case .cycleMode, .toggleChat, .uptodate, .summarize, .infoMode, .agent, .generateDigest, .meetingMode: return false
         }
     }
 
@@ -68,6 +72,9 @@ enum HotkeyAction: String, CaseIterable, Codable, Identifiable {
         case .generateDigest:
             let flags: NSEvent.ModifierFlags = [.option, .shift]
             return HotkeyBinding(action: self, keyCode: Key.d.carbonKeyCode, modifiersRaw: flags.rawValue)
+        case .meetingMode:
+            let flags: NSEvent.ModifierFlags = [.option, .shift]
+            return HotkeyBinding(action: self, keyCode: Key.n.carbonKeyCode, modifiersRaw: flags.rawValue)
         }
     }
 }

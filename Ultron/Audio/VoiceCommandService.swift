@@ -24,6 +24,8 @@ final class VoiceCommandService {
         case summarize
         /// v1.5 Phase 4c: trigger AI-briefing regeneration.
         case digest
+        /// v1.5 Phase 4d: toggle meeting-mode recording.
+        case meeting
     }
 
     var onCommand: ((Command) -> Void)?
@@ -184,6 +186,8 @@ final class VoiceCommandService {
         case tail.hasPrefix("digest"),
              tail.hasPrefix("opsamling"),
              tail.hasPrefix("morgenbriefing"):           command = .digest
+        case tail.hasPrefix("meeting"),
+             tail.hasPrefix("møde"):                     command = .meeting
         default:                                          command = nil
         }
 
