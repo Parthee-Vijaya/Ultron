@@ -2126,6 +2126,9 @@ struct InfoModeView: View {
     @State private var isSpeakingBriefing = false
 
     @State private var showDigestHistory = false
+    /// Tracks which past-briefing entries have been tapped open so their
+    /// bodies render in full instead of truncated.
+    @State private var expandedHistoryIndexes: Set<Int> = []
 
     @ViewBuilder
     private var briefingTile: some View {
@@ -2230,27 +2233,41 @@ struct InfoModeView: View {
     private var briefingHistoryDisclosure: some View {
         DisclosureGroup(isExpanded: $showDigestHistory) {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(service.digestHistory.prefix(5).enumerated()), id: \.offset) { _, entry in
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(DateFormatter.localizedString(
-                                from: entry.generatedAt, dateStyle: .short, timeStyle: .short
-                            ))
-                            .font(.caption2.weight(.medium))
-                            Text("· \(entry.model)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                ForEach(Array(service.digestHistory.prefix(5).enumerated()), id: \.offset) { index, entry in
+                    let isExpanded = expandedHistoryIndexes.contains(index)
+                    Button {
+                        if isExpanded {
+                            expandedHistoryIndexes.remove(index)
+                        } else {
+                            expandedHistoryIndexes.insert(index)
                         }
-                        Text(entry.text)
-                            .font(.caption)
-                            .foregroundStyle(.primary.opacity(0.82))
-                            .textSelection(.enabled)
-                            .lineLimit(4)
-                            .truncationMode(.tail)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text(DateFormatter.localizedString(
+                                    from: entry.generatedAt, dateStyle: .short, timeStyle: .short
+                                ))
+                                .font(.caption2.weight(.medium))
+                                Text("· \(entry.model)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            Text(entry.text)
+                                .font(.caption)
+                                .foregroundStyle(.primary.opacity(0.82))
+                                .textSelection(.enabled)
+                                .lineLimit(isExpanded ? nil : 4)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.leading, 8)
                     }
-                    .padding(.vertical, 4)
-                    .padding(.leading, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .buttonStyle(.plain)
                 }
             }
         } label: {

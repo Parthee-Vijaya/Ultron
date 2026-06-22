@@ -64,6 +64,13 @@ struct SettingsTracesPane: View {
             Spacer()
             Button("Genindlæs") { reload() }
                 .controlSize(.small)
+            Button {
+                exportCSV()
+            } label: {
+                Text("Eksportér CSV")
+            }
+            .controlSize(.small)
+            .disabled(entries.isEmpty)
             Button(role: .destructive) {
                 TraceStore.shared.clearAll()
                 // Clear local view immediately; file delete runs async.
@@ -75,6 +82,51 @@ struct SettingsTracesPane: View {
             .controlSize(.small)
             .disabled(entries.isEmpty)
         }
+    }
+
+    /// Write the currently-loaded trace entries to
+    /// `~/Desktop/ultron-traces-YYYY-MM-DD-HHMM.csv`. Lets the user mine for
+    /// patterns in Numbers / DuckDB / wherever without parsing JSONL.
+    private func exportCSV() {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        var out = "timestamp,provider,model,task,tokens_in,tokens_out,latency_ms,joules,rating,reason,error\n"
+        for entry in entries {
+            let row = [
+                iso.string(from: entry.timestamp),
+                entry.provider,
+                entry.model,
+                entry.taskType,
+                "\(entry.tokensIn)",
+                "\(entry.tokensOut)",
+                "\(entry.latencyMs)",
+                String(format: "%.3f", entry.joulesEst),
+                "\(entry.rating)",
+                csvEscape(entry.reason),
+                csvEscape(entry.errorDescription ?? "")
+            ].joined(separator: ",")
+            out.append(row)
+            out.append("\n")
+        }
+
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd-HHmm"
+        let filename = "ultron-traces-\(stamp.string(from: Date())).csv"
+        let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+        let url = desktop.appendingPathComponent(filename)
+        do {
+            try out.write(to: url, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            LoggingService.shared.log("Trace CSV export failed: \(error)", level: .warning)
+        }
+    }
+
+    private func csvEscape(_ value: String) -> String {
+        if value.contains(",") || value.contains("\"") || value.contains("\n") {
+            return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return value
     }
 
     private func stat(label: String, value: String) -> some View {
