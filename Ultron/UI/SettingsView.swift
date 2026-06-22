@@ -867,7 +867,7 @@ struct SettingsUsagePane: View {
 
 struct SettingsAgentPane: View {
     @AppStorage(Constants.Defaults.agentClaudeModel) private var claudeModel: String = "claude-sonnet-4-6"
-    @AppStorage(Constants.Defaults.agentOllamaModel) private var ollamaModel: String = "llama3.2:latest"
+    @AppStorage(Constants.Defaults.agentOllamaModel) private var ollamaModel: String = "gemma3:4b"
     @State private var workspaceRoots: [String] = []
     @State private var newRoot: String = ""
     @State private var ollamaModels: [String] = []

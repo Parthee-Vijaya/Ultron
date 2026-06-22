@@ -117,7 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 infoModeService.briefingModelProvider = {
                     UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
-                        ?? "llama3.2:latest"
+                        ?? "gemma3:4b"
                 }
             }
             // Phase 4c — automatic morning briefing. Scheduler fires at the
@@ -597,7 +597,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Reads the user's preferred model from UserDefaults so Settings updates
     /// can take effect on the next run:
     ///   - Anthropic: Constants.Defaults.agentClaudeModel (default claude-sonnet-4-6)
-    ///   - Ollama:    Constants.Defaults.agentOllamaModel (default llama3.2:latest)
+    ///   - Ollama:    Constants.Defaults.agentOllamaModel (default gemma3:4b)
     ///
     /// Returns nil only when the provider type isn't yet supported.
     private func ensureAgentChatPipeline(for providerType: AIProviderType) -> AgentChatPipeline? {
@@ -616,7 +616,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let inner = OllamaProvider()
             let traced = TracedAIProvider(inner: inner, type: .ollama, taskType: "agent.ollama")
             let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
-                ?? "llama3.2:latest"
+                ?? "gemma3:4b"
             pipeline = AgentChatPipeline(provider: traced, chatSession: chatSession, modelID: modelID)
         case .auto:
             let usage = usageTracker  // capture for factory closure
@@ -628,7 +628,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Prefer the Ollama default model for agent-mode auto; the router
             // swaps to the right one per decision.
             let modelID = UserDefaults.standard.string(forKey: Constants.Defaults.agentOllamaModel)
-                ?? "llama3.2:latest"
+                ?? "gemma3:4b"
             pipeline = AgentChatPipeline(provider: router, chatSession: chatSession, modelID: modelID)
         case .gemini:
             // Gemini routes through ChatPipeline (non-agent), not this one.
